@@ -115,6 +115,21 @@ describe('transaction ledger', () => {
     expect(reconcileLedger(ledger)).toEqual([]);
   });
 
+  it('rejects duplicate linked transfer-ins beyond the outbound quantity', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-replay', 100_000, 100_000), date: '2024-01-01' },
+        { id: 'move-out-replay', dedupKey: 'move-out-replay', date: '2025-01-02', type: 'transfer_out', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 100_000, costProvenance: 'exact' },
+        { id: 'move-in-replay-1', dedupKey: 'move-in-replay-1', date: '2025-01-03', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out-replay', amountPaise: 0, quantityMicros: 60_000, costProvenance: 'unknown' },
+        { id: 'move-in-replay-2', dedupKey: 'move-in-replay-2', date: '2025-01-04', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out-replay', amountPaise: 0, quantityMicros: 60_000, costProvenance: 'unknown' },
+      ],
+    };
+
+    expect(() => reconcileLedgerLots(ledger)).toThrow('Transfer-in quantity exceeds linked transfer');
+    expect(() => reconcileLedger(ledger)).toThrow('Transfer-in quantity exceeds linked transfer');
+  });
+
   it('resolves same-day linked transfers before lexical ID order', () => {
     const ledger: ReturnType<typeof createTransactionLedger> = {
       ...createTransactionLedger(),

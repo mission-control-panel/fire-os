@@ -111,7 +111,7 @@ export function renderTax(container?: HTMLElement, context: FeatureContext = act
 
         <!-- Action Buttons -->
         <div class="action-buttons">
-          ${plan.totalRecommendedHarvest > 0 ? `
+          ${plan.totalRecommendedHarvest > 0 && plan.dataQuality === 'exact' ? `
             <button id="record-harvest-btn" class="btn btn-primary">Record Harvest</button>
           ` : ''}
           <button id="reset-harvest-btn" class="btn btn-secondary">Reset Harvest</button>

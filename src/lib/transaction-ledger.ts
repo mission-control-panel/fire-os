@@ -322,6 +322,8 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
         if (incomingQuantity > carried.quantityMicros) throw new Error(`Transfer-in quantity exceeds linked transfer for ${transaction.id}`);
         const incomingCost = carried.quantityMicros === incomingQuantity ? carried.costPaise : Math.round(carried.costPaise * incomingQuantity / carried.quantityMicros);
         addLot(transaction, incomingQuantity, incomingCost, carried.costProvenance);
+        carried.quantityMicros -= incomingQuantity;
+        carried.costPaise -= incomingCost;
       } else addLot(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     }
     if (transaction.type === 'sale') consumeLots(transaction, quantity);
@@ -388,18 +390,22 @@ export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
     if (transaction.type === 'transfer_out') transferred.set(transaction.id, consume(transaction));
     if (transaction.type === 'transfer_in') {
       const carried = transaction.linkedTransactionId ? transferred.get(transaction.linkedTransactionId) : undefined;
-      if (carried?.length) {
+      if (transaction.linkedTransactionId && transferred.has(transaction.linkedTransactionId)) {
+        const linkedLots = carried ?? [];
         let remaining = transaction.quantityMicros === undefined
-          ? carried.reduce((sum, lot) => sum + lot.quantityMicros, 0)
+          ? linkedLots.reduce((sum, lot) => sum + lot.quantityMicros, 0)
           : quantity;
-        for (const [index, lot] of carried.entries()) {
+        for (const [index, lot] of linkedLots.entries()) {
           if (remaining <= 0) break;
           const carriedQuantity = Math.min(remaining, lot.quantityMicros);
           const carriedCost = lot.quantityMicros === carriedQuantity ? lot.costPaise : Math.round(lot.costPaise * carriedQuantity / lot.quantityMicros);
           add(transaction, carriedQuantity, carriedCost, lot.costProvenance, lot.acquiredDate, `:transfer-${index}`);
+          lot.quantityMicros -= carriedQuantity;
+          lot.costPaise -= carriedCost;
           remaining -= carriedQuantity;
         }
         if (remaining > 0) throw new Error(`Transfer-in quantity exceeds linked transfer for ${transaction.id}`);
+        transferred.set(transaction.linkedTransactionId!, linkedLots.filter((lot) => lot.quantityMicros > 0));
       } else add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     }
     if (transaction.type === 'split') {

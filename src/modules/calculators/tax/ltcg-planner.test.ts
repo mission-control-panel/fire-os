@@ -116,7 +116,7 @@ describe('calculateLTCGHarvestPlan month boundaries', () => {
     expect(plan.dataQuality).toBe('estimated');
   });
 
-  it('falls back to an estimate when the transaction stream is incomplete', () => {
+  it('withholds recommendations when the transaction stream is incomplete', () => {
     const state = initializeState();
     state.sip = { fund: { name: 'Fund', schemeCode: '123', units: 100, startDate: '2024-01', monthlyAmount: 100 } };
     state.nav = { '123': { schemeCode: '123', nav: 1_500, timestamp: '2026-04-01T00:00:00Z', ttl: 3600000 } };
@@ -125,8 +125,9 @@ describe('calculateLTCGHarvestPlan month boundaries', () => {
 
     const plan = calculateLTCGHarvestPlan(state, new Date('2026-04-01T00:00:00Z'));
 
-    expect(plan.dataQuality).toBe('estimated');
-    expect(plan.assumptions).toContain('Dated acquisition lots are unavailable; the legacy SIP-age estimate is shown.');
+    expect(plan.dataQuality).toBe('unknown');
+    expect(plan.recommendations).toEqual([]);
+    expect(plan.assumptions[0]).toContain('could not be reconciled');
   });
 
   it('does not resurrect SIP units after the ledger reconciles to zero holdings', () => {
@@ -152,5 +153,18 @@ describe('calculateLTCGHarvestPlan month boundaries', () => {
     state.taxCalendar.harvestTarget = 42_000;
 
     expect(calculateLTCGHarvestPlan(state, new Date('2026-04-01T00:00:00Z')).taxExemption).toBe(42_000);
+  });
+
+  it('does not claim exact zero holdings when valuation data is missing', () => {
+    const state = initializeState();
+    state.sip = { fund: { name: 'Fund', schemeCode: '123', units: 100, startDate: '2024-01', monthlyAmount: 100 } };
+    state.transactionLedger.instruments = { '123': { id: '123', name: 'Fund', assetClass: 'equity-mutual-fund', currency: 'INR' } };
+    state.transactionLedger.lots = [{ id: 'lot-1', transactionId: 'buy-1', accountId: 'account', instrumentId: '123', acquiredDate: '2024-01-01', quantityMicros: 100_000_000, costPaise: 10_000_000, costProvenance: 'exact' }];
+
+    const plan = calculateLTCGHarvestPlan(state, new Date('2026-04-01T00:00:00Z'));
+
+    expect(plan.dataQuality).toBe('unknown');
+    expect(plan.recommendations).toEqual([]);
+    expect(plan.assumptions[0]).toContain('valuations');
   });
 });

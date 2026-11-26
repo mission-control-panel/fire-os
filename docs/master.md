@@ -458,9 +458,10 @@ unchanged. See [AI reference](ai.md#full-request-trace-from-chat-event-to-model-
 - `state.esop` is a generic amount map included in net worth; `esopDetails`
   stores quote positions and exercise/vesting scenario inputs. The profile
   quote refresh may write computed market value into `state.esop.esop`.
-- `swpSchedule.rate` and `taxCalendar.harvestTarget` are persisted but current
-  SWP execution and LTCG planner use independent fixed behavior described in
-  [UI](ui.md).
+- `swpSchedule.rate` remains persisted for planning, while the LTCG planner uses
+  the configured `taxCalendar.harvestTarget` when complete dated ledger lots and
+  fresh valuations are available; incomplete or unsupported tax data remains
+  non-actionable as described in [UI](ui.md).
 - `watchdogRules` hold user-entered observations; source code does not crawl
   manager changes, fund AUM, blocked days or market feeds to populate them.
 - Emergency runway and crash deployment use the shared read-only safety engine.
