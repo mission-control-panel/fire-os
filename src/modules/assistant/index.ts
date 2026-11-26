@@ -14,7 +14,6 @@ import {
   classifyProposal,
   consentScope,
   defaultConsent,
-  hasConfirmedAssistantAction,
   normalizeConversationMessages,
   proposalStateFingerprint,
   queryAssistant,
@@ -36,7 +35,7 @@ import {
   persistPortfolioState,
 } from '../../lib/storage';
 import { recordPortfolioSnapshot } from '../../lib/snapshot-history';
-import { recordAssistantUndo, undoLastAssistantAction } from '../../lib/assistant/undo';
+import { canUndoAssistantAction, recordAssistantUndo, undoLastAssistantAction } from '../../lib/assistant/undo';
 import { CONFIG } from '../../lib/config';
 import { getOptionalAuth } from '../../lib/firebase';
 import { showToast, createModal, closeModal } from '../ui';
@@ -810,7 +809,8 @@ function refreshAuditSection(): void {
     list.appendChild(item);
   }
 
-  undoBtn.disabled = !hasConfirmedAssistantAction(getScope());
+  const storageKey = getPortfolioStorageKey();
+  undoBtn.disabled = !storageKey || !activeContext || !canUndoAssistantAction(storageKey, activeContext.state);
 }
 
 async function handleUndo(): Promise<void> {
