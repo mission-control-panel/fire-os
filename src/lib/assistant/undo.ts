@@ -1,4 +1,5 @@
 import type { FireOSState } from '../../types/state';
+import { isPersistedPortfolioData } from '../../types/state';
 
 const MAX_ASSISTANT_UNDO = 10;
 const UNDO_SUFFIX = ':assistant-undo';
@@ -17,7 +18,8 @@ function readEntries(storageKey: string): AssistantUndoEntry[] {
       typeof entry === 'object' && entry !== null &&
       typeof (entry as AssistantUndoEntry).afterFingerprint === 'string' &&
       typeof (entry as AssistantUndoEntry).before === 'object' &&
-      (entry as AssistantUndoEntry).before !== null);
+      (entry as AssistantUndoEntry).before !== null &&
+      isPersistedPortfolioData((entry as AssistantUndoEntry).before));
   } catch { return []; }
 }
 
@@ -27,12 +29,17 @@ export function persistedStateFingerprint(state: FireOSState): string {
   return JSON.stringify(persisted);
 }
 
-export function recordAssistantUndo(storageKey: string, before: PersistedSnapshot, afterFingerprint: string): void {
+export function recordAssistantUndo(storageKey: string, before: PersistedSnapshot, afterFingerprint: string): boolean {
   const storage = getStorage();
-  if (!storage) return;
+  if (!storage) return false;
   const entries = readEntries(storageKey);
   entries.push({ before, afterFingerprint });
-  storage.setItem(key(storageKey), JSON.stringify(entries.slice(-MAX_ASSISTANT_UNDO)));
+  try {
+    storage.setItem(key(storageKey), JSON.stringify(entries.slice(-MAX_ASSISTANT_UNDO)));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Restore only the most recent assistant action when no intervening edit occurred. */
@@ -41,12 +48,22 @@ export function undoLastAssistantAction(storageKey: string, state: FireOSState):
   const entries = readEntries(storageKey);
   const entry = entries[entries.length - 1];
   if (!storage || !entry || persistedStateFingerprint(state) !== entry.afterFingerprint) return false;
+  try {
+    storage.setItem(key(storageKey), JSON.stringify(entries.slice(0, -1)));
+  } catch {
+    return false;
+  }
   const currentUser = state.currentUser;
   const syncMetadata = state._syncMetadata;
   Object.keys(state).forEach((field) => {
     if (field !== 'currentUser' && field !== '_syncMetadata' && field !== '_lastSavedAt') delete state[field as keyof FireOSState];
   });
   Object.assign(state, entry.before, { currentUser, _syncMetadata: syncMetadata });
-  storage.setItem(key(storageKey), JSON.stringify(entries.slice(0, -1)));
   return true;
+}
+
+export function canUndoAssistantAction(storageKey: string, state: FireOSState): boolean {
+  const entries = readEntries(storageKey);
+  const entry = entries[entries.length - 1];
+  return Boolean(entry && persistedStateFingerprint(state) === entry.afterFingerprint);
 }
