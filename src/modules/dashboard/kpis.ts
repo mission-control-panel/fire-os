@@ -276,21 +276,43 @@ function calculatePortfolioXirr(
   state: FireOSState,
   funds: SIPStatusKPI['funds'],
 ): { rate: number | null; provenance: SIPStatusKPI['totalXIRRProvenance'] } {
-  const ledgerFlows: CashFlow[] = [];
-  for (const transaction of state.transactionLedger?.transactions ?? []) {
-    const date = new Date(`${transaction.date}T00:00:00Z`);
-    if (!isValid(date)) continue;
-    const amount = transaction.amountPaise / 100;
-    if (!Number.isFinite(amount) || amount === 0) continue;
-    if (transaction.type === 'purchase' || transaction.type === 'opening_balance' || transaction.type === 'fee') ledgerFlows.push({ date, amount: -amount });
-    if (transaction.type === 'sale' || transaction.type === 'dividend' || transaction.type === 'interest') ledgerFlows.push({ date, amount });
+  if (funds.length === 0 || funds.some((fund) => fund.valuation !== 'current' || fund.currentValue === null)) {
+    return { rate: null, provenance: 'unavailable' };
   }
 
-  if (ledgerFlows.length > 0) {
+  const fundKeys = new Map<string, string>();
+  for (const fund of funds) {
+    const source = state.sip[fund.key];
+    for (const identifier of [fund.key, source?.schemeCode, source?.name]) {
+      if (identifier) fundKeys.set(identifier, fund.key);
+    }
+  }
+
+  const ledgerFlows: CashFlow[] = [];
+  const coveredFunds = new Set<string>();
+  for (const transaction of state.transactionLedger?.transactions ?? []) {
+    const date = new Date(`${transaction.date}T00:00:00Z`);
+    if (!isValid(date) || date.getTime() > Date.now()) return { rate: null, provenance: 'unavailable' };
+    const fundKey = transaction.instrumentId ? fundKeys.get(transaction.instrumentId) : undefined;
+    if (!fundKey) continue;
+    const amount = transaction.amountPaise / 100;
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    if (transaction.type === 'purchase' || transaction.type === 'opening_balance' || transaction.type === 'fee') {
+      ledgerFlows.push({ date, amount: -amount });
+      coveredFunds.add(fundKey);
+    }
+    if (transaction.type === 'sale' || transaction.type === 'dividend' || transaction.type === 'interest') {
+      ledgerFlows.push({ date, amount });
+      coveredFunds.add(fundKey);
+    }
+  }
+
+  if (ledgerFlows.length > 0 && coveredFunds.size === funds.length) {
     const currentValue = funds.reduce((sum, fund) => sum + (fund.currentValue ?? 0), 0);
-    if (funds.some((fund) => fund.currentValue === null) || currentValue <= 0) return { rate: null, provenance: 'unavailable' };
+    if (currentValue <= 0) return { rate: null, provenance: 'unavailable' };
     ledgerFlows.push({ date: new Date(), amount: currentValue });
-    return { rate: calculateXirr(ledgerFlows), provenance: 'actual-ledger' };
+    const rate = calculateXirr(ledgerFlows);
+    return { rate, provenance: rate === null ? 'unavailable' : 'actual-ledger' };
   }
 
   const estimatedFlows: CashFlow[] = [];
@@ -303,7 +325,7 @@ function calculatePortfolioXirr(
     for (let index = 0; index < months; index += 1) estimatedFlows.push({ date: addMonths(start, index), amount: -source.monthlyAmount });
   }
   const currentValue = funds.reduce((sum, fund) => sum + (fund.currentValue ?? 0), 0);
-  if (currentValue <= 0 || funds.length === 0 || funds.some((fund) => fund.currentValue === null)) return { rate: null, provenance: 'unavailable' };
+  if (currentValue <= 0 || estimatedFlows.length === 0) return { rate: null, provenance: 'unavailable' };
   estimatedFlows.push({ date: new Date(), amount: currentValue });
   return { rate: calculateXirr(estimatedFlows), provenance: 'estimated-sip' };
 }

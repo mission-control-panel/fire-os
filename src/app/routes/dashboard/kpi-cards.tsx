@@ -1,5 +1,5 @@
 import { Card, cn } from '../../ui';
-import { formatCurrency } from '../../../lib/formatters';
+import { formatCurrency, formatPercentage } from '../../../lib/formatters';
 import { calculateGoalProgress } from '../../../modules/dashboard/goal-tracker';
 import { fiProgress, floatIndicator, sipStatus, totalNetWorth } from '../../../modules/dashboard/kpis';
 import type { FireOSState, Goal } from '../../../types/state';
@@ -42,7 +42,7 @@ export function KpiRow({ state }: { state: FireOSState }) {
   const nifty = floatIndicator(state);
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
       <KpiCard
         className="sm:col-span-2 xl:col-span-2"
         label="Total Net Worth"
@@ -58,6 +58,16 @@ export function KpiRow({ state }: { state: FireOSState }) {
           ? `${sip.valuation.coveragePercent.toFixed(0)}% priced${sip.valuation.staleHoldings ? ` • ${sip.valuation.staleHoldings} stale` : ''} • ${sip.valuation.unpricedHoldings} unpriced`
           : `Invested ${formatCurrency(sip.totalInvested, 0)} • Current ${formatCurrency(sip.totalCurrentValue, 0)}`}
         tone={sip.totalPL === null ? 'neutral' : sip.totalPL >= 0 ? 'positive' : 'negative'}
+      />
+      <KpiCard
+        label="SIP XIRR"
+        value={sip.totalXIRR === null ? 'Unavailable' : formatPercentage(sip.totalXIRR, 1)}
+        detail={sip.totalXIRRProvenance === 'actual-ledger'
+          ? 'Actual ledger flows'
+          : sip.totalXIRRProvenance === 'estimated-sip'
+            ? 'Estimated from SIP schedule'
+            : 'Insufficient current, linked data'}
+        tone={sip.totalXIRR === null ? 'neutral' : sip.totalXIRR >= 0 ? 'positive' : 'negative'}
       />
 <KpiCard
   label="FI Progress"
