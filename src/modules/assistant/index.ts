@@ -725,7 +725,7 @@ async function commitProposal(
   // Snapshot pre-change state so Undo works even before saveData runs
   const storageKey = getPortfolioStorageKey();
   const beforeSnapshot = stripRuntime(state);
-  if (storageKey && !recordAssistantUndo(storageKey, beforeSnapshot, proposalStateFingerprint(validation.candidate))) {
+  if (!storageKey || !recordAssistantUndo(storageKey, beforeSnapshot, proposalStateFingerprint(validation.candidate))) {
     appendAssistantAction(getScope(), {
       question: question.slice(0, 200),
       diff,
