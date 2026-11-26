@@ -5,6 +5,13 @@
 
 import xirr from 'xirr';
 
+const MAX_PROJECTION_YEARS = 100;
+const MAX_FINANCIAL_VALUE = Number.MAX_SAFE_INTEGER;
+
+function boundedNonNegative(value: number, max = Number.MAX_SAFE_INTEGER): number {
+  return Number.isFinite(value) ? Math.min(Math.max(0, value), max) : 0;
+}
+
 /**
  * SIP Corpus: Future Value of Regular Monthly Investments
  * Calculates compound growth of systematic monthly contributions
@@ -19,18 +26,20 @@ export function sipCorpus(
   annualRate: number,
   years: number
 ): number {
-  const monthlyRate = annualRate / 12;
-  const months = years * 12;
+  const contribution = boundedNonNegative(monthlyAmount);
+  const rate = Number.isFinite(annualRate) ? Math.max(-0.99, Math.min(annualRate, 10)) : 0;
+  const months = boundedNonNegative(years, MAX_PROJECTION_YEARS) * 12;
+  const monthlyRate = rate / 12;
 
   // Handle edge case: 0% return
   if (Math.abs(monthlyRate) < 1e-10) {
-    return monthlyAmount * months;
+    return contribution * months;
   }
 
   // Formula: FV = P × [((1 + r)^n - 1) / r]
   // where P = monthly amount, r = monthly rate, n = number of months
-  const fv = monthlyAmount * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate);
-  return fv;
+  const fv = contribution * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate);
+  return Number.isFinite(fv) ? Math.min(Math.max(0, fv), MAX_FINANCIAL_VALUE) : MAX_FINANCIAL_VALUE;
 }
 
 /**
@@ -45,7 +54,7 @@ export function sipCostBasis(
   monthlyAmount: number,
   monthsSinceStart: number
 ): number {
-  return monthlyAmount * monthsSinceStart;
+  return Math.min(boundedNonNegative(monthlyAmount) * boundedNonNegative(monthsSinceStart), MAX_FINANCIAL_VALUE);
 }
 
 export interface CashFlow {
@@ -86,17 +95,19 @@ export function emergencyRunway(
   liquidAssets: number,
   monthlyExpenses: number
 ): number {
+  const assets = boundedNonNegative(liquidAssets);
+  const expenses = boundedNonNegative(monthlyExpenses);
   // Edge case: no expenses
-  if (monthlyExpenses <= 0) {
-    return liquidAssets > 0 ? 999 : 0;
+  if (expenses <= 0) {
+    return assets > 0 ? 999 : 0;
   }
 
   // Edge case: no assets
-  if (liquidAssets <= 0) {
+  if (assets <= 0) {
     return 0;
   }
 
-  return liquidAssets / monthlyExpenses;
+  return Math.min(assets / expenses, MAX_FINANCIAL_VALUE);
 }
 
 /**
@@ -119,11 +130,14 @@ export function crashProtocol(
   deployAmount25: number;
 } {
   // Calculate current drawdown from 52W high
-  const drawdownPercent = ((niftyHigh52w - niftyCurrentLevel) / niftyHigh52w) * 100;
+  const portfolio = boundedNonNegative(portfolioValue);
+  const high = boundedNonNegative(niftyHigh52w);
+  const current = boundedNonNegative(niftyCurrentLevel);
+  const drawdownPercent = high > 0 ? ((high - current) / high) * 100 : 0;
 
   // Buffer is 10% of actual portfolio value
   const bufferPercentage = 0.1;
-  const buffer = portfolioValue * bufferPercentage;
+  const buffer = portfolio * bufferPercentage;
 
   // Calculate deploy amounts for additional crashes
   // Each deploy amount represents how much to deploy for 10%, 15%, 25% additional crashes
@@ -156,10 +170,12 @@ export function fiGoalProgress(
   yearsRemaining: number | null;
 } {
   // FI target = 25 × annual expenses (safe withdrawal rule: 4% per year)
-  const fiTarget = annualExpenses * 25;
+  const corpus = boundedNonNegative(currentCorpus);
+  const expenses = boundedNonNegative(annualExpenses);
+  const fiTarget = Math.min(expenses * 25, MAX_FINANCIAL_VALUE);
 
   // Handle edge case: 0 expenses
-  if (annualExpenses === 0) {
+  if (expenses === 0) {
     return {
       fiTarget: 0,
       progressPercent: 0,
@@ -168,11 +184,11 @@ export function fiGoalProgress(
   }
 
   // Calculate progress percentage
-  const progressPercent = (currentCorpus / fiTarget) * 100;
+  const progressPercent = (corpus / fiTarget) * 100;
 
   // If already achieved FI, years remaining = 0; otherwise null (not yet achieved)
   let yearsRemaining: number | null = null;
-  if (currentCorpus >= fiTarget) {
+  if (corpus >= fiTarget) {
     yearsRemaining = 0;
   }
 
@@ -201,11 +217,14 @@ export function sipPauseImpact(
   lostGrowth: number;
   totalCost: number;
 } {
+  const contribution = boundedNonNegative(monthlyAmount);
+  const months = Math.floor(boundedNonNegative(pauseMonths, MAX_PROJECTION_YEARS * 12));
+  const rate = Number.isFinite(annualRate) ? Math.max(-0.99, Math.min(annualRate, 10)) : 0;
   // Missed contributions: simple product
-  const missedContributions = monthlyAmount * pauseMonths;
+  const missedContributions = Math.min(contribution * months, MAX_FINANCIAL_VALUE);
 
   // If 0 pause months, no cost
-  if (pauseMonths === 0) {
+  if (months === 0) {
     return {
       missedContributions: 0,
       lostGrowth: 0,
@@ -214,7 +233,7 @@ export function sipPauseImpact(
   }
 
   // Lost growth: what those contributions would have earned over the pause period
-  const monthlyRate = annualRate / 12;
+  const monthlyRate = rate / 12;
 
   let lostGrowth = 0;
 
@@ -225,11 +244,12 @@ export function sipPauseImpact(
     // Future value of missed contributions if they had been invested
     // SIP contributions made at different times: some at start, some at end
     // Calculate FV of SIP for pauseMonths, then subtract the principal
-    const fvOfMissedSIP = sipCorpus(monthlyAmount, annualRate, pauseMonths / 12);
+    const fvOfMissedSIP = sipCorpus(contribution, rate, months / 12);
     lostGrowth = fvOfMissedSIP - missedContributions;
   }
 
-  const totalCost = missedContributions + lostGrowth;
+  lostGrowth = Math.max(0, Math.min(lostGrowth, MAX_FINANCIAL_VALUE));
+  const totalCost = Math.min(missedContributions + lostGrowth, MAX_FINANCIAL_VALUE);
 
   return {
     missedContributions,

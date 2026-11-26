@@ -180,6 +180,14 @@ value on now; total XIRR is the simple mean of fund XIRRs. FI target is user
 entry; progress is current net worth / target (0 when no target), with years
 remaining only when already achieved. Drawdown is max(0, `(high-level)/high`).
 
+Shared financial math in `src/lib/calculations.ts` bounds non-finite and negative
+inputs, treats zero-rate SIP growth as principal-only, and floors pause horizons
+to whole months. Projection horizons are capped at 100 years so malformed input
+cannot create unbounded values; annual rates are bounded to -99% through 1,000%
+and finite outputs are capped at `Number.MAX_SAFE_INTEGER`. Negative pause growth
+does not reduce the missed-contribution cost; callers continue to provide display
+rounding.
+
 Each holding valuation is also classified as current, stale, missing, or explicit
 zero. Missing NAVs are not coerced into zero and are excluded from numeric totals;
 the dashboard shows priced coverage and provenance. Stale last-good values remain
