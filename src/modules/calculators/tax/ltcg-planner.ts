@@ -43,10 +43,12 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; r
   const realizedLots: TaxLot[] = [];
   const disposals: TaxLotDisposal[] = [];
   let unsupportedRealized = false;
+  const asOfDate = format(asOf, 'yyyy-MM-dd');
+  const transactionsAsOf = ledger.transactions.filter((transaction) => transaction.date <= asOfDate);
   let currentLots;
   try {
     currentLots = ledger.transactions.length > 0
-      ? reconcileLedgerLots(ledger, (transaction: LedgerTransaction, consumed: LedgerLot[]) => {
+      ? reconcileLedgerLots({ ...ledger, transactions: transactionsAsOf }, (transaction: LedgerTransaction, consumed: LedgerLot[]) => {
         const quantity = transaction.quantityMicros ?? 0;
         const salePrice = quantity > 0 ? (transaction.amountPaise / 100) / (quantity / 1_000_000) : 0;
         for (const lot of consumed) {
@@ -60,7 +62,7 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; r
           disposals.push({ lotId: lot.id, saleDate: transaction.date, units: lot.quantityMicros / 1_000_000, salePrice, assetClass });
         }
       })
-      : ledger.lots;
+      : ledger.lots.filter((lot) => lot.acquiredDate <= asOfDate);
   } catch {
     return { lots: [], realizedLots: [], disposals: [], hasSource: true, reconciled: false, hasCurrentLots: false, unsupportedRealized: false };
   }
