@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { applyLedgerImport, createTransactionLedger, previewLedgerImport, reconcileLedger, rollbackLedgerImport } from './transaction-ledger';
+import { applyLedgerImport, createTransactionLedger, previewLedgerImport, reconcileLedger, reconcileLedgerLots, rollbackLedgerImport, type LedgerTransaction } from './transaction-ledger';
 
-const purchase = (id: string, amountPaise = 125_000, quantityMicros = 10_000): Record<string, unknown> => ({
-  id, date: '2026-04-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise, quantityMicros, costProvenance: 'exact',
+const purchase = (id: string, amountPaise = 125_000, quantityMicros = 10_000): LedgerTransaction => ({
+  id, dedupKey: id, date: '2026-04-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise, quantityMicros, costProvenance: 'exact',
 });
 
 describe('transaction ledger', () => {
@@ -70,5 +70,88 @@ describe('transaction ledger', () => {
     const preview = previewLedgerImport([{ ...purchase('opening'), type: 'opening_balance', amountPaise: 0, costProvenance: 'unknown' }]);
     const { ledger } = applyLedgerImport(createTransactionLedger(), preview, 'merge');
     expect(reconcileLedger(ledger)[0].costProvenance).toBe('unknown');
+  });
+
+  it('carries transfer provenance through to the destination lot', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-old', 100_000, 10_000), date: '2024-01-01' },
+        { id: 'move-out', dedupKey: 'move-out', date: '2025-01-02', type: 'transfer_out' as const, accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 10_000, costProvenance: 'exact' as const },
+        { id: 'move-in', dedupKey: 'move-in', date: '2025-01-03', type: 'transfer_in' as const, accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out', amountPaise: 0, quantityMicros: 10_000, costProvenance: 'unknown' as const },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)).toEqual([{ id: 'move-in:lot:transfer-0', transactionId: 'move-in', accountId: 'new-brokerage', instrumentId: 'fund-a', acquiredDate: '2024-01-01', quantityMicros: 10_000, costPaise: 100_000, costProvenance: 'exact' }]);
+  });
+
+  it('limits a linked transfer-in to its declared quantity', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-partial', 100_000, 100_000), date: '2024-01-01' },
+        { id: 'move-out-partial', dedupKey: 'move-out-partial', date: '2025-01-02', type: 'transfer_out', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 100_000, costProvenance: 'exact' },
+        { id: 'move-in-partial', dedupKey: 'move-in-partial', date: '2025-01-03', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out-partial', amountPaise: 0, quantityMicros: 40_000, costProvenance: 'unknown' },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)).toMatchObject([{ quantityMicros: 40_000, costPaise: 40_000, acquiredDate: '2024-01-01' }]);
+    expect(reconcileLedger(ledger)).toEqual([
+      { accountId: 'new-brokerage', instrumentId: 'fund-a', quantityMicros: 40_000, costPaise: 40_000, costProvenance: 'exact' },
+    ]);
+  });
+
+  it('does not turn an explicit zero-unit transfer into a full transfer', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-zero-transfer', 100_000, 100_000), date: '2024-01-01' },
+        { id: 'move-out-zero', dedupKey: 'move-out-zero', date: '2025-01-02', type: 'transfer_out', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 100_000, costProvenance: 'exact' },
+        { id: 'move-in-zero', dedupKey: 'move-in-zero', date: '2025-01-03', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out-zero', amountPaise: 0, quantityMicros: 0, costProvenance: 'unknown' },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)).toEqual([]);
+    expect(reconcileLedger(ledger)).toEqual([]);
+  });
+
+  it('rejects duplicate linked transfer-ins beyond the outbound quantity', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-replay', 100_000, 100_000), date: '2024-01-01' },
+        { id: 'move-out-replay', dedupKey: 'move-out-replay', date: '2025-01-02', type: 'transfer_out', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 100_000, costProvenance: 'exact' },
+        { id: 'move-in-replay-1', dedupKey: 'move-in-replay-1', date: '2025-01-03', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out-replay', amountPaise: 0, quantityMicros: 60_000, costProvenance: 'unknown' },
+        { id: 'move-in-replay-2', dedupKey: 'move-in-replay-2', date: '2025-01-04', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out-replay', amountPaise: 0, quantityMicros: 60_000, costProvenance: 'unknown' },
+      ],
+    };
+
+    expect(() => reconcileLedgerLots(ledger)).toThrow('Transfer-in quantity exceeds linked transfer');
+    expect(() => reconcileLedger(ledger)).toThrow('Transfer-in quantity exceeds linked transfer');
+  });
+
+  it('resolves same-day linked transfers before lexical ID order', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-same-day', 100_000, 10_000), date: '2024-01-01' },
+        { id: 'a-in', dedupKey: 'a-in', date: '2025-01-02', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'z-out', amountPaise: 0, quantityMicros: 10_000, costProvenance: 'unknown' },
+        { id: 'z-out', dedupKey: 'z-out', date: '2025-01-02', type: 'transfer_out', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 10_000, costProvenance: 'exact' },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)[0]).toMatchObject({ acquiredDate: '2024-01-01', costPaise: 100_000, costProvenance: 'exact' });
+  });
+
+  it('applies stock splits without resetting acquisition cost or date', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-split', 100_000, 10_000), date: '2024-01-01' },
+        { id: 'split-1', dedupKey: 'split-1', date: '2025-01-02', type: 'split' as const, accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 0, costProvenance: 'unknown' as const, splitRatioNumerator: 2, splitRatioDenominator: 1 },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)[0]).toMatchObject({ acquiredDate: '2024-01-01', quantityMicros: 20_000, costPaise: 100_000 });
   });
 });

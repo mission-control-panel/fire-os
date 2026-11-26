@@ -300,17 +300,36 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
     addHolding(transaction, -quantity, -consumedCost, provenance);
     return { costPaise: consumedCost, costProvenance: provenance };
   };
-  const transferCosts = new Map<string, { costPaise: number; costProvenance: CostProvenance }>();
-  for (const transaction of [...ledger.transactions].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
+  const transferCosts = new Map<string, { quantityMicros: number; costPaise: number; costProvenance: CostProvenance }>();
+  const transferSources = new Map<string, LedgerTransaction>();
+  const transactions = [...ledger.transactions].sort((a, b) => {
+    const dateOrder = a.date.localeCompare(b.date);
+    if (dateOrder !== 0) return dateOrder;
+    if (a.type === 'transfer_in' && a.linkedTransactionId === b.id) return 1;
+    if (b.type === 'transfer_in' && b.linkedTransactionId === a.id) return -1;
+    return a.id.localeCompare(b.id);
+  });
+  for (const transaction of transactions) {
     const quantity = transaction.quantityMicros ?? 0;
     if (transaction.type === 'purchase' || transaction.type === 'opening_balance') addLot(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     if (transaction.type === 'transfer_out') {
       const consumed = consumeLots(transaction, quantity);
-      transferCosts.set(transaction.id, consumed);
+      transferCosts.set(transaction.id, { quantityMicros: quantity, ...consumed });
+      transferSources.set(transaction.id, transaction);
     }
     if (transaction.type === 'transfer_in') {
+      if (transaction.linkedTransactionId && !transferCosts.has(transaction.linkedTransactionId)) throw new Error(`Missing linked transfer-out for ${transaction.id}`);
       const carried = transaction.linkedTransactionId ? transferCosts.get(transaction.linkedTransactionId) : undefined;
-      addLot(transaction, quantity, carried?.costPaise ?? transaction.amountPaise, carried?.costProvenance ?? transaction.costProvenance);
+      const source = transaction.linkedTransactionId ? transferSources.get(transaction.linkedTransactionId) : undefined;
+      if (source && source.instrumentId !== transaction.instrumentId) throw new Error(`Linked transfer instrument mismatch for ${transaction.id}`);
+      if (carried) {
+        const incomingQuantity = transaction.quantityMicros === undefined ? carried.quantityMicros : quantity;
+        if (incomingQuantity > carried.quantityMicros) throw new Error(`Transfer-in quantity exceeds linked transfer for ${transaction.id}`);
+        const incomingCost = carried.quantityMicros === incomingQuantity ? carried.costPaise : Math.round(carried.costPaise * incomingQuantity / carried.quantityMicros);
+        addLot(transaction, incomingQuantity, incomingCost, carried.costProvenance);
+        carried.quantityMicros -= incomingQuantity;
+        carried.costPaise -= incomingCost;
+      } else addLot(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     }
     if (transaction.type === 'sale') consumeLots(transaction, quantity);
     if (transaction.type === 'split') {
@@ -325,7 +344,93 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
       for (const lot of queue) lot.quantityMicros = Math.round(lot.quantityMicros * transaction.splitRatioNumerator / transaction.splitRatioDenominator);
     }
   }
-  return [...holdings.values()];
+  return [...holdings.values()].filter((holding) => holding.quantityMicros !== 0);
+}
+
+/**
+ * Return the current FIFO lots after applying the append-only transaction
+ * stream. Consumers that need acquisition dates must use this rather than
+ * trusting an imported snapshot of `ledger.lots`, which may still contain
+ * units consumed by later sales or transfers.
+ */
+export function reconcileLedgerLots(ledger: TransactionLedger, onSale?: (transaction: LedgerTransaction, lots: LedgerLot[]) => void): LedgerLot[] {
+  const queues = new Map<string, LedgerLot[]>();
+  const transferred = new Map<string, LedgerLot[]>();
+  const transferSources = new Map<string, LedgerTransaction>();
+  const key = (transaction: LedgerTransaction) => `${transaction.accountId}|${transaction.instrumentId || ''}`;
+  const add = (transaction: LedgerTransaction, quantityMicros: number, costPaise: number, costProvenance: CostProvenance, acquiredDate = transaction.date, suffix = '') => {
+    if (!transaction.instrumentId || quantityMicros <= 0) return;
+    const queue = queues.get(key(transaction)) ?? [];
+    queue.push({ id: `${transaction.id}:lot${suffix}`, transactionId: transaction.id, accountId: transaction.accountId, instrumentId: transaction.instrumentId, acquiredDate, quantityMicros, costPaise, costProvenance });
+    queues.set(key(transaction), queue);
+  };
+  const consume = (transaction: LedgerTransaction): LedgerLot[] => {
+    const queue = queues.get(key(transaction)) ?? [];
+    let remaining = transaction.quantityMicros ?? 0;
+    const consumedLots: LedgerLot[] = [];
+    while (remaining > 0 && queue.length) {
+      const lot = queue[0];
+      const consumed = Math.min(remaining, lot.quantityMicros);
+      const cost = lot.quantityMicros === consumed ? lot.costPaise : Math.round(lot.costPaise * consumed / lot.quantityMicros);
+      consumedLots.push({ ...lot, id: `${lot.id}:consumed:${transaction.id}:${consumedLots.length}`, quantityMicros: consumed, costPaise: cost });
+      lot.quantityMicros -= consumed;
+      lot.costPaise -= cost;
+      remaining -= consumed;
+      if (lot.quantityMicros === 0) queue.shift();
+    }
+    if (remaining > 0) throw new Error(`Insufficient units for ${key(transaction)}`);
+    queues.set(key(transaction), queue);
+    return consumedLots;
+  };
+  const transactions = [...ledger.transactions].sort((a, b) => {
+    const dateOrder = a.date.localeCompare(b.date);
+    if (dateOrder !== 0) return dateOrder;
+    if (a.type === 'transfer_in' && a.linkedTransactionId === b.id) return 1;
+    if (b.type === 'transfer_in' && b.linkedTransactionId === a.id) return -1;
+    return a.id.localeCompare(b.id);
+  });
+  for (const transaction of transactions) {
+    const quantity = transaction.quantityMicros ?? 0;
+    if (transaction.type === 'purchase' || transaction.type === 'opening_balance') add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
+    if (transaction.type === 'sale') onSale?.(transaction, consume(transaction));
+    if (transaction.type === 'transfer_out') {
+      transferred.set(transaction.id, consume(transaction));
+      transferSources.set(transaction.id, transaction);
+    }
+    if (transaction.type === 'transfer_in') {
+      if (transaction.linkedTransactionId && !transferred.has(transaction.linkedTransactionId)) throw new Error(`Missing linked transfer-out for ${transaction.id}`);
+      const source = transaction.linkedTransactionId ? transferSources.get(transaction.linkedTransactionId) : undefined;
+      if (source && source.instrumentId !== transaction.instrumentId) throw new Error(`Linked transfer instrument mismatch for ${transaction.id}`);
+      const carried = transaction.linkedTransactionId ? transferred.get(transaction.linkedTransactionId) : undefined;
+      if (transaction.linkedTransactionId && transferred.has(transaction.linkedTransactionId)) {
+        const linkedLots = carried ?? [];
+        let remaining = transaction.quantityMicros === undefined
+          ? linkedLots.reduce((sum, lot) => sum + lot.quantityMicros, 0)
+          : quantity;
+        for (const [index, lot] of linkedLots.entries()) {
+          if (remaining <= 0) break;
+          const carriedQuantity = Math.min(remaining, lot.quantityMicros);
+          const carriedCost = lot.quantityMicros === carriedQuantity ? lot.costPaise : Math.round(lot.costPaise * carriedQuantity / lot.quantityMicros);
+          add(transaction, carriedQuantity, carriedCost, lot.costProvenance, lot.acquiredDate, `:transfer-${index}`);
+          lot.quantityMicros -= carriedQuantity;
+          lot.costPaise -= carriedCost;
+          remaining -= carriedQuantity;
+        }
+        if (remaining > 0) throw new Error(`Transfer-in quantity exceeds linked transfer for ${transaction.id}`);
+        transferred.set(transaction.linkedTransactionId!, linkedLots.filter((lot) => lot.quantityMicros > 0));
+      } else add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
+    }
+    if (transaction.type === 'split') {
+      if (!transaction.splitRatioNumerator || !transaction.splitRatioDenominator) throw new Error(`Split ratio is required for ${transaction.id}`);
+      const queue = queues.get(key(transaction)) ?? [];
+      for (const lot of queue) {
+        const splitQuantity = Math.round(lot.quantityMicros * transaction.splitRatioNumerator / transaction.splitRatioDenominator);
+        if (!Number.isSafeInteger(splitQuantity)) throw new Error(`Invalid split quantity for ${transaction.id}`);
+        lot.quantityMicros = splitQuantity;
+      }
+    }
+  }
+  return [...queues.values()].flat().filter(lot => lot.quantityMicros > 0);
 }
 
 export function applyLedgerImport(ledger: TransactionLedger, preview: LedgerImportPreview, mode: LedgerImportMode): LedgerImportResult {

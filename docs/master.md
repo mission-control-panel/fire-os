@@ -235,7 +235,7 @@ Core formulas and their code locations:
 | FIRE-age scenario | Monthly compounding from annual CAGR, add SIP monthly, annual step-up default 10%; simulation caps at 1,000 months (~83 years) and returns `unreachable: true` with null age/months when the goal is not reached in that horizon | `src/modules/calculators/scenario-modeler.ts` |
 | Coast FIRE | Required today = target / `(1+return)^years`; coast age solves compound growth without contributions | `src/modules/calculators/scenario-modeler.ts` |
 | Retirement projection | Pure corpus summary and retirement simulation separates liquid/investable FIRE-eligible assets from restricted, earmarked, unvested and illiquid assets; subtracts liabilities from usable FIRE corpus, inflates expenses to retirement, treats pension as gross income taxed at the same effective rate as withdrawals, and reports projected, already-retired, unreachable or unavailable states | `src/modules/retirement/retirement-engine.ts`, `src/core/feature-ports.ts` |
-| LTCG harvest | Estimated long-term units from SIP months older than 12; gains allocated up to the configured yearly allowance `taxCalendar.harvestTarget` (default 0) less last year's harvest. | `src/modules/calculators/tax/ltcg-planner.ts` |
+| LTCG harvest | Uses exact dated transaction lots when available; otherwise labels the legacy SIP-age calculation as an estimate. The tax-lot engine records the financial year, versioned rule set, source URL, holding-period classification, realized gain/loss inputs and configurable annual allowance. | `src/modules/calculators/tax/tax-lot-engine.ts`, `src/modules/calculators/tax/ltcg-planner.ts` |
 | Emergency runway | Selected liquid assets / monthly expenses; UI floors to whole months | `src/modules/calculators/index.ts`, `src/lib/calculations.ts` |
 | SWP | Pure preview plans FIFO redemption across fresh-NAV fund units; explicit recording is idempotent, records the actual amount, and reduces units only after validation | `src/modules/calculators/swp-scheduler.ts` |
 | Insurance gap | Term target = max(annual income × 10, ₹1Cr); health target ₹20L for family ≤2 else ₹50L | `src/modules/plan/action-engine.ts`, `health-status.ts` |
@@ -458,9 +458,10 @@ unchanged. See [AI reference](ai.md#full-request-trace-from-chat-event-to-model-
 - `state.esop` is a generic amount map included in net worth; `esopDetails`
   stores quote positions and exercise/vesting scenario inputs. The profile
   quote refresh may write computed market value into `state.esop.esop`.
-- `swpSchedule.rate` and `taxCalendar.harvestTarget` are persisted but current
-  SWP execution and LTCG planner use independent fixed behavior described in
-  [UI](ui.md).
+- `swpSchedule.rate` remains persisted for planning, while the LTCG planner uses
+  the configured `taxCalendar.harvestTarget` when complete dated ledger lots and
+  fresh valuations are available; incomplete or unsupported tax data remains
+  non-actionable as described in [UI](ui.md).
 - `watchdogRules` hold user-entered observations; source code does not crawl
   manager changes, fund AUM, blocked days or market feeds to populate them.
 - Emergency runway and crash deployment use the shared read-only safety engine.

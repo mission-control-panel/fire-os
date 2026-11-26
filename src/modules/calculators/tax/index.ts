@@ -31,6 +31,7 @@ export function renderTax(container?: HTMLElement, context: FeatureContext = act
     };
   }
   const plan = calculateLTCGHarvestPlan(D);
+  const displayAmount = (value: number) => plan.dataQuality === 'unknown' ? 'Unavailable' : formatCurrency(value);
 
   // 2. 80C Tracker Calculations
   const storedEpf = localStorage.getItem('epf_annual_contribution');
@@ -58,24 +59,26 @@ export function renderTax(container?: HTMLElement, context: FeatureContext = act
         <div class="metric-grid">
           <div class="metric-card">
             <div class="metric-label">Total Unrealized Gains</div>
-            <div class="metric-value">${formatCurrency(plan.totalLtcgGains)}</div>
+            <div class="metric-value">${displayAmount(plan.totalLtcgGains)}</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Remaining Exemption Limit</div>
-            <div class="metric-value" id="ltcg-remaining-limit">${formatCurrency(plan.remainingLimit)}</div>
-            <div class="metric-subtext" id="ltcg-limit-subtext">Out of ${formatCurrency(D.taxCalendar.harvestTarget)} annual limit</div>
+            <div class="metric-value" id="ltcg-remaining-limit">${displayAmount(plan.remainingLimit)}</div>
+            <div class="metric-subtext" id="ltcg-limit-subtext">Out of ${displayAmount(plan.taxExemption)} annual limit</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Recommended Harvest</div>
-            <div class="metric-value">${formatCurrency(plan.totalRecommendedHarvest)}</div>
+            <div class="metric-value">${displayAmount(plan.totalRecommendedHarvest)}</div>
             <div class="metric-subtext">Estimated value to sell</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Tax Saved</div>
-            <div class="metric-value">${formatCurrency(plan.totalRecommendedHarvestGain * 0.125)}</div>
-            <div class="metric-subtext">12.5% of recommended harvest gain</div>
+            <div class="metric-value">${displayAmount(plan.totalRecommendedHarvestGain * plan.taxRate)}</div>
+            <div class="metric-subtext">${(plan.taxRate * 100).toFixed(1)}% planning estimate</div>
           </div>
         </div>
+
+        <p class="section-description">Data quality: <strong>${plan.dataQuality}</strong>${plan.financialYear ? ` · Financial year ${plan.financialYear}` : ''}. Rule set <code>${plan.taxRuleVersion}</code> (effective ${plan.taxRuleEffectiveFrom}); <a href="${plan.taxRuleSourceUrl}" target="_blank" rel="noreferrer">official source</a>. ${plan.assumptions[0]}</p>
 
         <!-- Recommendations Table -->
         <div class="table-container">
@@ -109,7 +112,7 @@ export function renderTax(container?: HTMLElement, context: FeatureContext = act
 
         <!-- Action Buttons -->
         <div class="action-buttons">
-          ${plan.totalRecommendedHarvest > 0 ? `
+          ${plan.totalRecommendedHarvest > 0 && plan.dataQuality === 'exact' ? `
             <button id="record-harvest-btn" class="btn btn-primary">Record Harvest</button>
           ` : ''}
           <button id="reset-harvest-btn" class="btn btn-secondary">Reset Harvest</button>

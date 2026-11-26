@@ -226,12 +226,13 @@ table row with Indian currency formatting, funding progress and shortfall.
 - **SIP Pause:** defaults to current total monthly SIP, six months and 12% annual
   return. UI estimate is missed contributions = monthly × months; lost growth
   approximation = missed × (annual % / 12 / 100) × 12; total is their sum.
-   - **Tax planner:** `src/modules/calculators/tax/ltcg-planner.ts` approximates
-      long-term eligible SIP units as total units × (invested amount attributable
-      to months beyond 12 / total invested). Uses cached NAV; positive gains are
-      ranked descending. Allowance is max(0, `taxCalendar.harvestTarget` − lastHarvestedAmount),
-      recommendations allocate eligible
-      gain up to that amount and convert allocated gain fraction to units/value.
+   - **Tax planner:** `src/modules/calculators/tax/tax-lot-engine.ts` uses dated
+      ledger lots when available, classifies holding periods by asset class and
+      Indian financial year, and carries a versioned rule source URL. Realized
+      gains/losses and the configurable annual allowance are estimate inputs only;
+      no trade or redemption is initiated. Portfolios without dated lots retain
+      the legacy SIP-age estimate but expose `dataQuality: estimated` and explain
+      the assumption instead of presenting it as exact tax advice.
 - **SWP scheduler:** stores enabled, start month, monthly amount and rate field
       (rate is not used by execution). Manual simulation and daily auto-run reduce
       units in `DEFAULT_FUND_BUCKETS` order (large-cap → mid-cap → small-cap → gold → other). Matching uses
@@ -619,21 +620,18 @@ an estimate, never as a guaranteed or actual return.
 
 ### Tax planner and tax calendar
 
-LTCG approximation includes only `state.sip`. Months held are inclusive from
-start month to now using local-calendar month difference; long-term months are
-`max(0, elapsed-12)`. The start date may be `YYYY-MM` or a persisted full
-`YYYY-MM-DD` (its month is used); non-padded or impossible months yield zero
-elapsed months. Invested amount
-uses positive costBasis else monthlyAmount×months; average monthly investment
-divides by max(1,elapsed), and estimated long-term invested is average × long-term
-months. Eligible units are total units × long-termInvested/fundInvested, clamped
-to [0,total units]. Current NAV uses scheme code/name matcher. Gains are
-`max(0,longTermValue-longTermInvested)`. Remaining cap = max(0,125000 − recorded
-lastHarvestedAmount); stored `harvestTarget` is not used for this calculation.
-Funds sort by gains descending. Per fund allocated gain is min(gain, remaining),
-units are longTermUnits×allocatedGain/gain, sale amount units×NAV. “Tax saved” UI
-is recommended gain ×12.5%. Record increments lastHarvestedAmount by planned
-gain and stores today's local calendar date; reset zeros both date and amount.
+When a reconciled transaction ledger with fresh NAV and supported instrument
+metadata is present, the planner uses dated FIFO lots, strict post-anniversary
+holding periods, configured `taxCalendar.harvestTarget`, and explicit
+`dataQuality`/rule provenance. Sold or transferred units are removed from current
+holdings; incomplete streams, missing valuations, unsupported instruments, and
+unknown cost basis remain non-actionable rather than falling back to stale SIP
+units. If no ledger data exists, the legacy `state.sip` month-age estimate is
+shown as estimated. The start date may be `YYYY-MM` or a persisted full
+`YYYY-MM-DD`; non-padded or impossible months yield zero elapsed months. Funds
+sort by gains descending. “Tax saved” is a planning estimate only. Record harvest
+increments `lastHarvestedAmount` by planned gain and stores today's local calendar
+date; reset zeros both date and amount.
 
 Section 80C screen reads `localStorage.epf_annual_contribution`, otherwise
 estimates EPF as monthlyIncome×50%×12%×12; adds term-life annual premium; fixed
