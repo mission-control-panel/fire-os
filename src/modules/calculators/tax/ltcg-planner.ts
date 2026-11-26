@@ -1,5 +1,6 @@
 import { differenceInCalendarMonths, isValid, parse } from 'date-fns';
 import type { FireOSState } from '../../../types/state';
+import { calculateTaxLotPlan, CURRENT_INDIAN_CAPITAL_GAINS_RULES, type TaxLot, type TaxLotHarvestPlan } from './tax-lot-engine';
 
 export interface FundHarvestRecommendation {
   fundKey: string;
@@ -22,12 +23,116 @@ export interface TaxHarvestPlan {
   totalRecommendedHarvest: number;
   totalRecommendedHarvestGain: number;
   recommendations: FundHarvestRecommendation[];
+  dataQuality: TaxLotHarvestPlan['dataQuality'];
+  financialYear: string | null;
+  taxRuleVersion: string;
+  taxRuleSourceUrl: string;
+  taxRuleEffectiveFrom: string;
+  taxRate: number;
+  taxExemption: number;
+  assumptions: string[];
+}
+
+function ledgerLotsForState(state: FireOSState): TaxLot[] {
+  const ledger = state.transactionLedger;
+  if (!ledger?.lots?.length) return [];
+  const lots: TaxLot[] = [];
+  for (const [fundKey, fund] of Object.entries(state.sip || {})) {
+    if (!fund) continue;
+    const nav = fund.schemeCode ? state.nav[fund.schemeCode]?.nav : undefined;
+    if (!Number.isFinite(nav) || (nav ?? 0) <= 0) continue;
+    for (const lot of ledger.lots) {
+      const instrument = ledger.instruments[lot.instrumentId];
+      const matches = [fundKey, fund.schemeCode, fund.name].filter(Boolean).includes(lot.instrumentId)
+        || instrument?.name === fund.name;
+      if (!matches) continue;
+      const assetClass = instrument?.assetClass === 'equity-listed' || instrument?.assetClass === 'equity-mutual-fund'
+        ? instrument.assetClass
+        : 'equity-mutual-fund';
+      lots.push({
+        id: lot.id,
+        fundKey,
+        fundName: fund.name || fundKey,
+        assetClass,
+        acquiredDate: lot.acquiredDate,
+        units: lot.quantityMicros / 1_000_000,
+        costBasis: lot.costPaise / 100,
+        currentNAV: nav ?? 0,
+        dataQuality: lot.costProvenance === 'exact' ? 'exact' : 'estimated',
+      });
+    }
+  }
+  return lots;
+}
+
+function fromTaxLotPlan(plan: TaxLotHarvestPlan, state: FireOSState): TaxHarvestPlan {
+  const grouped = new Map<string, TaxLot[]>();
+  for (const result of plan.lots) {
+    const current = grouped.get(result.lot.fundKey) ?? [];
+    current.push(result.lot);
+    grouped.set(result.lot.fundKey, current);
+  }
+  const recommendations = [...grouped.entries()].map(([fundKey, lots]) => {
+    const results = plan.lots.filter(result => result.lot.fundKey === fundKey);
+    const fund = state.sip[fundKey];
+    const longTerm = results.filter(result => result.eligible === true);
+    const totalUnits = lots.reduce((sum, lot) => sum + lot.units, 0);
+    const longTermUnits = longTerm.reduce((sum, result) => sum + result.lot.units, 0);
+    const longTermValue = longTerm.reduce((sum, result) => sum + (result.currentValue ?? 0), 0);
+    const longTermInvested = longTerm.reduce((sum, result) => sum + result.lot.costBasis, 0);
+    const ltcgGains = longTerm.reduce((sum, result) => sum + Math.max(0, result.gain ?? 0), 0);
+    const currentNAV = fund?.schemeCode ? state.nav[fund.schemeCode]?.nav ?? 0 : lots[0]?.currentNAV ?? 0;
+    return { fundKey, fundName: lots[0]?.fundName ?? fundKey, totalUnits, longTermUnits, longTermValue, longTermInvested, ltcgGains, currentNAV, recommendedHarvestUnits: 0, recommendedHarvestAmount: 0 };
+  }).sort((a, b) => b.ltcgGains - a.ltcgGains);
+
+  let remainingLimit = plan.remainingExemption ?? 0;
+  let totalRecommendedHarvest = 0;
+  let totalRecommendedHarvestGain = 0;
+  for (const recommendation of recommendations) {
+    const gain = Math.min(recommendation.ltcgGains, remainingLimit);
+    recommendation.recommendedHarvestUnits = recommendation.ltcgGains > 0 ? recommendation.longTermUnits * (gain / recommendation.ltcgGains) : 0;
+    recommendation.recommendedHarvestAmount = recommendation.recommendedHarvestUnits * recommendation.currentNAV;
+    totalRecommendedHarvest += recommendation.recommendedHarvestAmount;
+    totalRecommendedHarvestGain += gain;
+    remainingLimit -= gain;
+  }
+  return {
+    totalInvested: plan.lots.reduce((sum, result) => sum + result.lot.costBasis, 0),
+    totalCurrentValue: plan.totalCurrentValue ?? 0,
+    totalLtcgGains: plan.totalLtcgGains ?? 0,
+    remainingLimit: plan.remainingExemption ?? 0,
+    totalRecommendedHarvest,
+    totalRecommendedHarvestGain,
+    recommendations,
+    dataQuality: plan.dataQuality,
+    financialYear: plan.financialYear,
+    taxRuleVersion: plan.rules.version,
+    taxRuleSourceUrl: plan.rules.sourceUrl,
+    taxRuleEffectiveFrom: plan.rules.effectiveFrom,
+    taxRate: plan.rules.ltcgRate,
+    taxExemption: plan.rules.section112aExemption,
+    assumptions: plan.assumptions,
+  };
 }
 
 export function calculateLTCGHarvestPlan(
   state: FireOSState,
   now: Date = new Date()
 ): TaxHarvestPlan {
+  const ledgerLots = ledgerLotsForState(state);
+  if (ledgerLots.length > 0) {
+    const configuredLimit = state.taxCalendar?.harvestTarget;
+    const rules = configuredLimit && configuredLimit > 0
+      ? { ...CURRENT_INDIAN_CAPITAL_GAINS_RULES, section112aExemption: configuredLimit }
+      : CURRENT_INDIAN_CAPITAL_GAINS_RULES;
+    return fromTaxLotPlan(calculateTaxLotPlan({
+      lots: ledgerLots,
+      asOf: now,
+      lastHarvestedAmount: state.taxCalendar?.lastHarvestedAmount,
+      rules,
+    }), state);
+  }
+
   const sip = state?.sip || {};
   const nav = state?.nav || {};
   
@@ -143,5 +248,13 @@ export function calculateLTCGHarvestPlan(
     totalRecommendedHarvest,
     totalRecommendedHarvestGain,
     recommendations,
+    dataQuality: 'estimated',
+    financialYear: null,
+    taxRuleVersion: CURRENT_INDIAN_CAPITAL_GAINS_RULES.version,
+    taxRuleSourceUrl: CURRENT_INDIAN_CAPITAL_GAINS_RULES.sourceUrl,
+    taxRuleEffectiveFrom: CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom,
+    taxRate: CURRENT_INDIAN_CAPITAL_GAINS_RULES.ltcgRate,
+    taxExemption: CURRENT_INDIAN_CAPITAL_GAINS_RULES.section112aExemption,
+    assumptions: ['Dated acquisition lots are unavailable; the legacy SIP-age estimate is shown.', 'No trade, redemption, or tax filing is initiated by this calculation.'],
   };
 }

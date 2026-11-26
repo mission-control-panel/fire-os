@@ -226,12 +226,13 @@ table row with Indian currency formatting, funding progress and shortfall.
 - **SIP Pause:** defaults to current total monthly SIP, six months and 12% annual
   return. UI estimate is missed contributions = monthly × months; lost growth
   approximation = missed × (annual % / 12 / 100) × 12; total is their sum.
-   - **Tax planner:** `src/modules/calculators/tax/ltcg-planner.ts` approximates
-      long-term eligible SIP units as total units × (invested amount attributable
-      to months beyond 12 / total invested). Uses cached NAV; positive gains are
-      ranked descending. Allowance is max(0, `taxCalendar.harvestTarget` − lastHarvestedAmount),
-      recommendations allocate eligible
-      gain up to that amount and convert allocated gain fraction to units/value.
+   - **Tax planner:** `src/modules/calculators/tax/tax-lot-engine.ts` uses dated
+      ledger lots when available, classifies holding periods by asset class and
+      Indian financial year, and carries a versioned rule source URL. Realized
+      gains/losses and the configurable annual allowance are estimate inputs only;
+      no trade or redemption is initiated. Portfolios without dated lots retain
+      the legacy SIP-age estimate but expose `dataQuality: estimated` and explain
+      the assumption instead of presenting it as exact tax advice.
 - **SWP scheduler:** stores enabled, start month, monthly amount and rate field
       (rate is not used by execution). Manual simulation and daily auto-run reduce
       units in `DEFAULT_FUND_BUCKETS` order (large-cap → mid-cap → small-cap → gold → other). Matching uses

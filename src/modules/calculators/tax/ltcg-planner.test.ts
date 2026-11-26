@@ -67,4 +67,21 @@ describe('calculateLTCGHarvestPlan month boundaries', () => {
     expect(plan.totalInvested).toBe(300);
     expect(plan.recommendations[0].longTermUnits).toBe(0);
   });
+
+  it('uses dated transaction lots when the ledger has exact acquisition data', () => {
+    const state = initializeState();
+    state.sip = { fund: { name: 'Fund', schemeCode: '123', units: 100, startDate: '2024-01', monthlyAmount: 100 } };
+    state.nav = { '123': { schemeCode: '123', nav: 1_500, timestamp: '2026-04-01T00:00:00Z', ttl: 3600000 } };
+    state.taxCalendar.harvestTarget = 125_000;
+    state.transactionLedger.instruments = { '123': { id: '123', name: 'Fund', assetClass: 'equity-mutual-fund', currency: 'INR' } };
+    state.transactionLedger.lots = [{ id: 'lot-1', transactionId: 'buy-1', accountId: 'account', instrumentId: '123', acquiredDate: '2024-01-01', quantityMicros: 100_000_000, costPaise: 10_000_000, costProvenance: 'exact' }];
+
+    const plan = calculateLTCGHarvestPlan(state, new Date('2026-04-01T00:00:00Z'));
+
+    expect(plan.dataQuality).toBe('exact');
+    expect(plan.financialYear).toBe('2026-27');
+    expect(plan.taxRuleVersion).toBe('finance-no-2-act-2024-v1');
+    expect(plan.recommendations[0].longTermUnits).toBe(100);
+    expect(plan.recommendations[0].ltcgGains).toBe(50_000);
+  });
 });

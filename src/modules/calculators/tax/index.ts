@@ -63,7 +63,7 @@ export function renderTax(container?: HTMLElement, context: FeatureContext = act
           <div class="metric-card">
             <div class="metric-label">Remaining Exemption Limit</div>
             <div class="metric-value" id="ltcg-remaining-limit">${formatCurrency(plan.remainingLimit)}</div>
-            <div class="metric-subtext" id="ltcg-limit-subtext">Out of ${formatCurrency(D.taxCalendar.harvestTarget)} annual limit</div>
+            <div class="metric-subtext" id="ltcg-limit-subtext">Out of ${formatCurrency(plan.taxExemption)} annual limit</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Recommended Harvest</div>
@@ -72,10 +72,12 @@ export function renderTax(container?: HTMLElement, context: FeatureContext = act
           </div>
           <div class="metric-card">
             <div class="metric-label">Tax Saved</div>
-            <div class="metric-value">${formatCurrency(plan.totalRecommendedHarvestGain * 0.125)}</div>
-            <div class="metric-subtext">12.5% of recommended harvest gain</div>
+            <div class="metric-value">${formatCurrency(plan.totalRecommendedHarvestGain * plan.taxRate)}</div>
+            <div class="metric-subtext">${(plan.taxRate * 100).toFixed(1)}% planning estimate</div>
           </div>
         </div>
+
+        <p class="section-description">Data quality: <strong>${plan.dataQuality}</strong>${plan.financialYear ? ` · Financial year ${plan.financialYear}` : ''}. Rule set <code>${plan.taxRuleVersion}</code> (effective ${plan.taxRuleEffectiveFrom}); <a href="${plan.taxRuleSourceUrl}" target="_blank" rel="noreferrer">official source</a>. ${plan.assumptions[0]}</p>
 
         <!-- Recommendations Table -->
         <div class="table-container">
