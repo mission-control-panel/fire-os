@@ -45,9 +45,10 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; r
   let unsupportedRealized = false;
   const asOfDate = format(asOf, 'yyyy-MM-dd');
   const transactionsAsOf = ledger.transactions.filter((transaction) => transaction.date <= asOfDate);
+  const hasHoldingTransactions = transactionsAsOf.some((transaction) => ['purchase', 'opening_balance', 'sale', 'transfer_in', 'transfer_out', 'split'].includes(transaction.type));
   let currentLots;
   try {
-    currentLots = transactionsAsOf.length > 0
+    currentLots = hasHoldingTransactions
       ? reconcileLedgerLots({ ...ledger, transactions: transactionsAsOf }, (transaction: LedgerTransaction, consumed: LedgerLot[]) => {
         const quantity = transaction.quantityMicros ?? 0;
         const salePrice = quantity > 0 ? (transaction.amountPaise / 100) / (quantity / 1_000_000) : 0;
