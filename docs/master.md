@@ -300,8 +300,8 @@ POSTs to `/api/assistant/query`. The Worker verifies the token (signature,
 issuer, audience, expiry), validates the request and
 extracted-proposal envelopes with Zod in `shared/assistant-policy.js`, applies
 the separate prompt regex policy, rate limits per user (with a per-IP guard),
-forwards a system prompt and conversation to OpenRouter, extracts a JSON
-proposal from model output, and returns the reply — a deterministic fallback
+forwards a system prompt and conversation to OpenRouter, extracts only a
+complete plain or fenced JSON proposal from model output, and returns the reply — a deterministic fallback
 reply when the model is unavailable. Signed-out users get a sign-in prompt and
 no request is sent.
 The same Worker serves the read-only `GET /api/market/*` Yahoo proxy with
@@ -430,7 +430,8 @@ Nifty fetch -> summarized context -> proxy policy/limits -> OpenRouter response
 -> client displays response -> recursively validates any assistant-writable
 proposal -> consent check -> review diff -> scope/fingerprint check -> optional
 provider reauth -> snapshot -> confirmed local save and optional cloud sync ->
-local audit row. User rejection or any validation, stale-state, or reauth
+local audit row. Assistant undo uses an action-specific inverse guarded by the
+post-action state fingerprint; unrelated edits invalidate it. User rejection or any validation, stale-state, or reauth
 failure leaves portfolio unchanged. See [AI reference](ai.md#full-request-trace-from-chat-event-to-model-result).
 
 ## Domain modules and contracts

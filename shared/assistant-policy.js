@@ -154,14 +154,26 @@ export function validateAssistantRequest(body) {
   return null;
 }
 
+/** Parse only a complete JSON object or a fenced JSON object; never scan prose greedily. */
+function parseStructuredObject(reply) {
+  if (typeof reply !== 'string' || !reply.trim()) return null;
+  const trimmed = reply.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const source = fenced ? fenced[1].trim() : trimmed;
+  if (!source.startsWith('{') || !source.endsWith('}')) return null;
+  try {
+    const parsed = JSON.parse(source);
+    return is(proposalEnvelopeSchema, parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Strip unapproved keys and non-JSON-null values from model-proposed changes. */
 export function extractProposedChanges(reply) {
-  if (typeof reply !== 'string' || !reply) return null;
-  const match = reply.match(/\{[\s\S]*\}/);
-  if (!match) return null;
+  const parsed = parseStructuredObject(reply);
+  if (!parsed) return null;
   try {
-    const parsed = JSON.parse(match[0]);
-    if (!is(proposalEnvelopeSchema, parsed)) return null;
     const allowed = new Set(PERSISTED_ALLOWLIST);
     const filtered = {};
     for (const [key, value] of Object.entries(parsed)) {

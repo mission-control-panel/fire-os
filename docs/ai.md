@@ -13,7 +13,7 @@ Deep Chat UI
  <- { reply, proposedChanges? }
  -> display reply; validate proposal -> diff -> user confirmation
  -> optional re-authentication -> snapshot -> apply -> local/cloud persistence
- -> local-only audit record and undo snapshot
+ -> local-only audit record and action-specific undo record
 ```
 
 Primary sources are `src/modules/assistant/index.ts`, `src/lib/assistant/`,
@@ -136,8 +136,8 @@ clarifies `exact.holdings.sip` means current SIP market value, while
 
 Model configuration defaults to `openrouter/free`, then configured free-model
 fallbacks, capped at OpenRouter's 3-model limit. Reply extraction reads first
-choice content (or compatible `content` field). Proposal extraction parses the
-first greedy `{...}` substring as a Zod-validated object envelope, then
+choice content (or compatible `content` field). Proposal extraction accepts
+only a complete JSON object or complete fenced JSON response, then
 `PERSISTED_ALLOWLIST` projects allowed assistant-writable top-level portfolio
 and action fields and removes runtime/underscore keys, including valuation
 caches and privacy controls. Extraction does not establish semantic correctness;
@@ -169,8 +169,9 @@ enabled only for signed-in users. Failed cloud persistence reports that local
 change remains and offers undo. The audit stores at most 50 entries per scope,
 newest last; it includes timestamp, first 200 chars of triggering question,
 diff, decision, cloudSaved and notes. It is local-only and not synced. Undo
-restores the previous portfolio snapshot and persists it through the active
-portfolio repository.
+restores the action-specific pre-change state only when the active portfolio
+still matches the post-action fingerprint, then persists it through the active
+portfolio repository. Unrelated edits invalidate the assistant undo.
 
 ## Error behavior and operations
 
@@ -255,8 +256,8 @@ and are independent of the assistant audit.
 
 ## Proposal review subtleties
 
-Server proposal extraction uses greedy regex from first `{` through last `}` in
-reply; malformed/mixed JSON text yields no proposal. Server allowlist prevents
+Server proposal extraction accepts only a complete plain or fenced JSON object;
+malformed or prose-wrapped JSON yields no proposal. Server allowlist prevents
 unknown top-level output; nested payloads remain the browser's responsibility.
 Client constructs candidate from current state and recursively merges each
 plain-object section; complete persisted-state validator then validates
@@ -271,13 +272,11 @@ disappear. Validation, scope, and state fingerprint are rerun immediately
 before confirm to catch identity or state changes since preview.
 
 Snapshot flow: commit records current state before apply, applies values in
-place, then `persistPortfolioState()`. Local save happens before awaited cloud
-sync. If cloud fails after local write, implementation retains state locally,
-records `save-failed`, and offers Undo. Undo uses previous validated snapshot,
-then repository save; cloud failure leaves local undo in place. The message
-“Undo last assistant change” can target most recent portfolio snapshot, while
-the snapshot stack can include other saves as well; it is not exclusively
-assistant-scoped.
+place, records an assistant-only inverse with the resulting state fingerprint,
+then `persistPortfolioState()`. Local save happens before awaited cloud sync.
+If cloud fails after local write, implementation retains state locally, records
+`save-failed`, and offers Undo. Undo uses the matching assistant inverse only;
+an intervening edit causes a safe no-op.
 
 ## Failure matrix
 
