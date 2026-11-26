@@ -11,6 +11,7 @@ import { fetchCurrencyToInr, fetchEsopValuations, fetchStockQuote } from '../mod
 import { totalNetWorth, sipStatus, fiProgress, floatIndicator, portfolioComposition, attributeNetWorthChange, esopConcentration } from '../modules/dashboard/kpis';
 import { calculateAllocationDrift } from '../modules/calculators/portfolio-rebalancing';
 import { calculateFIAge, calculateCoastFire } from '../modules/calculators/scenario-modeler';
+import { projectRetirement, summarizeRetirementCorpus } from '../modules/retirement/retirement-engine';
 import { renderCashflowSummary } from '../modules/plan/cashflow-summary';
 import { renderExpenseTracker } from '../modules/trackers/expense-tracker';
 import { checkWatchdogRules } from '../modules/watchdog/fund-manager-alerts';
@@ -30,6 +31,8 @@ export {
   calculateAllocationDrift,
   calculateFIAge,
   calculateCoastFire,
+  projectRetirement,
+  summarizeRetirementCorpus,
   checkWatchdogRules,
 };
 
@@ -50,6 +53,8 @@ export interface FeatureCalculationPort {
   calculateAllocationDrift: typeof calculateAllocationDrift;
   calculateFIAge: typeof calculateFIAge;
   calculateCoastFire: typeof calculateCoastFire;
+  projectRetirement: typeof projectRetirement;
+  summarizeRetirementCorpus: typeof summarizeRetirementCorpus;
 }
 
 export interface FeatureWidgetPort {
@@ -135,6 +140,8 @@ export function createFeaturePorts(): FeaturePorts {
       calculateAllocationDrift,
       calculateFIAge,
       calculateCoastFire,
+      projectRetirement,
+      summarizeRetirementCorpus,
     },
     widgets: {
       renderCashflowSummary,
