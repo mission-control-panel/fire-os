@@ -180,6 +180,12 @@ value on now; total XIRR is the simple mean of fund XIRRs. FI target is user
 entry; progress is current net worth / target (0 when no target), with years
 remaining only when already achieved. Drawdown is max(0, `(high-level)/high`).
 
+Each holding valuation is also classified as current, stale, missing, or explicit
+zero. Missing NAVs are not coerced into zero and are excluded from numeric totals;
+the dashboard shows priced coverage and provenance. Stale last-good values remain
+visible for a partial total, but SIP P&L is shown as unknown until fresh data is
+available.
+
 ### Goals — `src/app/routes/goals-wizard.tsx`
 
 Goals is a migrated React route. The form requires a named goal, a target

@@ -48,6 +48,8 @@ the dashboard. It sends:
 - constant user label `User`, age band (20s/30s/40s/50s+), and tax slab;
 - bucketed FI target, net worth, annual expenses, and each asset category;
 - category holding counts;
+- valuation coverage percentage, unpriced holding count, and whether the
+  aggregate is complete or partial;
 - Nifty level, 52-week high, calculated drawdown, timestamp, source, status,
   age-in-minutes, and freshness when valid;
 - when `sendExact` is true: exact net worth, FI target, annual expenses,

@@ -229,6 +229,47 @@ describe('Other Holdings KPI calculations', () => {
   });
 });
 
+describe('truthful valuation coverage', () => {
+  it('does not turn a missing NAV into a zero-valued holding', () => {
+    const state = initializeState();
+    state.sip = {
+      missing: { name: 'Missing NAV', schemeCode: 'missing', units: 10, startDate: '2025-01', monthlyAmount: 1000 },
+    };
+
+    const result = totalNetWorth(state);
+    expect(result.netWorth).toBe(0);
+    expect(result.valuation).toMatchObject({ totalHoldings: 1, pricedHoldings: 0, unpricedHoldings: 1, coveragePercent: 0, hasUnknownValues: true });
+    expect(sipStatus(state).funds[0]).toMatchObject({ currentValue: null, pl: null, valuation: 'missing' });
+    expect(sipStatus(state).totalPL).toBeNull();
+  });
+
+  it('retains a stale last-good NAV in the partial total and labels its provenance', () => {
+    const state = initializeState();
+    state.sip = {
+      stale: { name: 'Stale NAV', schemeCode: 'stale', units: 10, startDate: '2025-01', monthlyAmount: 1000 },
+    };
+    state.nav = {
+      stale: { schemeCode: 'stale', nav: 125, timestamp: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(), ttl: 60 * 60 * 1000, source: 'fixture' },
+    };
+
+    const result = totalNetWorth(state);
+    expect(result.netWorth).toBe(1250);
+    expect(result.valuation).toMatchObject({ pricedHoldings: 1, unpricedHoldings: 0, hasUnknownValues: true });
+    expect(result.valuation.sources[0]).toMatchObject({ status: 'stale', source: 'fixture' });
+    expect(sipStatus(state).totalPL).toBeNull();
+  });
+
+  it('counts an explicit zero valuation as priced rather than missing', () => {
+    const state = initializeState();
+    state.sip = {
+      zero: { name: 'Zero NAV', schemeCode: 'zero', units: 0, startDate: '2025-01', monthlyAmount: 1000 },
+    };
+
+    expect(totalNetWorth(state).valuation).toMatchObject({ pricedHoldings: 1, unpricedHoldings: 0, hasUnknownValues: false });
+    expect(sipStatus(state).funds[0].valuation).toBe('zero');
+  });
+});
+
 describe('roadmap calculations', () => {
   it('exposes the canonical net-worth calculator through feature ports', () => {
     expect(createFeaturePorts().calculations.totalNetWorth).toBe(totalNetWorth);

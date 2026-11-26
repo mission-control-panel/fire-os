@@ -25,6 +25,33 @@ export interface TotalNetWorthKPI {
     demat: number;
     otherHoldings: number;
   };
+  valuation: ValuationCoverage;
+}
+
+export type ValuationStatus = 'current' | 'stale' | 'missing' | 'zero';
+
+export interface ValuationCoverage {
+  totalHoldings: number;
+  pricedHoldings: number;
+  unpricedHoldings: number;
+  coveragePercent: number;
+  staleHoldings: number;
+  hasUnknownValues: boolean;
+  /** Human-readable provenance for the entries contributing to the total. */
+  sources: Array<{ holding: string; status: ValuationStatus; asOf?: string; source?: string }>;
+}
+
+function valuationStatus(entry: { nav: number; timestamp: string; ttl: number; status?: string } | undefined): ValuationStatus {
+  if (!entry || !Number.isFinite(entry.nav)) return 'missing';
+  if (entry.nav === 0) return 'zero';
+  const timestamp = Date.parse(entry.timestamp);
+  if (!Number.isFinite(timestamp) || !Number.isFinite(entry.ttl) || entry.ttl < 0) return 'missing';
+  if (entry.status === 'stale' || Date.now() - timestamp > entry.ttl) return 'stale';
+  return 'current';
+}
+
+function emptyCoverage(): ValuationCoverage {
+  return { totalHoldings: 0, pricedHoldings: 0, unpricedHoldings: 0, coveragePercent: 100, staleHoldings: 0, hasUnknownValues: false, sources: [] };
 }
 
 export interface NetWorthAttribution {
@@ -75,10 +102,21 @@ export function summarizeOtherHoldings(state: FireOSState): OtherHoldingsSummary
 }
 
 export function totalNetWorth(state: FireOSState): TotalNetWorthKPI {
+  const sources: ValuationCoverage['sources'] = [];
+  let totalHoldings = 0;
+  let pricedHoldings = 0;
+  const addSource = (holding: string, status: ValuationStatus, entry?: { timestamp?: string; source?: string }) => {
+    totalHoldings++;
+    if (status !== 'missing') pricedHoldings++;
+    sources.push({ holding, status, ...(entry?.timestamp ? { asOf: entry.timestamp } : {}), ...(entry?.source ? { source: entry.source } : {}) });
+  };
+
   // MF holdings: SIPFunds - units × NAV from cache
   const mf = Object.entries(state.mf).reduce((sum, [, fund]) => {
-    const nav = fund.schemeCode ? state.nav[fund.schemeCode]?.nav ?? 0 : 0;
-    return sum + (fund.units * nav || 0);
+    const entry = fund.schemeCode ? state.nav[fund.schemeCode] : undefined;
+    const status = fund.units === 0 ? 'zero' : valuationStatus(entry);
+    addSource(fund.name, status, entry);
+    return status === 'missing' ? sum : sum + (fund.units * (entry?.nav ?? 0) || 0);
   }, 0);
 
   // FD holdings: simple amount
@@ -91,8 +129,10 @@ export function totalNetWorth(state: FireOSState): TotalNetWorthKPI {
   const sip = Object.entries(state.sip).reduce((sum, [, fund]) => {
     // Try to get scheme code: from fund.schemeCode
     const navCacheKey = fund.schemeCode;
-    const nav = navCacheKey ? state.nav[navCacheKey]?.nav ?? 0 : 0;
-    return sum + (fund.units * nav || 0);
+    const entry = navCacheKey ? state.nav[navCacheKey] : undefined;
+    const status = fund.units === 0 ? 'zero' : valuationStatus(entry);
+    addSource(fund.name, status, entry);
+    return status === 'missing' ? sum : sum + (fund.units * (entry?.nav ?? 0) || 0);
   }, 0);
 
   // ESOP holdings: simple amount
@@ -107,6 +147,17 @@ export function totalNetWorth(state: FireOSState): TotalNetWorthKPI {
   const otherHoldings = summarizeOtherHoldings(state).totalValue;
   const liabilities = Object.values(state.liabilities || {}).reduce((sum, liability) => sum + Math.max(0, liability.amount || 0), 0);
 
+  const directHoldings = [
+    ...Object.keys(state.fd || {}).map(key => ({ key, value: state.fd[key]?.amount })),
+    ...Object.keys(state.epf || {}).map(key => ({ key, value: state.epf[key]?.amount })),
+    ...Object.keys(state.esop || {}).map(key => ({ key, value: state.esop[key]?.amount })),
+    ...Object.keys(state.bonds || {}).map(key => ({ key, value: state.bonds[key]?.amount })),
+    ...Object.keys(state.demat || {}).map(key => ({ key, value: state.demat[key]?.currentValue })),
+    ...Object.keys(state.otherHoldings || {}).filter(key => !['otherHolding51', 'otherHolding52', 'otherHolding53'].includes(key)).map(key => ({ key, value: state.otherHoldings[key]?.amount })),
+  ];
+  directHoldings.forEach(({ key, value }) =>
+    addSource(key, Number.isFinite(value) ? (value === 0 ? 'zero' : 'current') : 'missing', { source: 'manual' }),
+  );
   const assets = mf + fd + epf + sip + esop + bonds + demat + otherHoldings;
   const netWorth = assets - liabilities;
 
@@ -124,6 +175,15 @@ export function totalNetWorth(state: FireOSState): TotalNetWorthKPI {
       demat: isFinite(demat) ? demat : 0,
       otherHoldings: isFinite(otherHoldings) ? otherHoldings : 0,
     },
+    valuation: {
+      totalHoldings,
+      pricedHoldings,
+      unpricedHoldings: totalHoldings - pricedHoldings,
+      coveragePercent: totalHoldings > 0 ? (pricedHoldings / totalHoldings) * 100 : 100,
+      staleHoldings: sources.filter(source => source.status === 'stale').length,
+      hasUnknownValues: totalHoldings !== pricedHoldings || sources.some(source => source.status === 'stale'),
+      sources,
+    },
   };
 }
 
@@ -133,16 +193,18 @@ export function totalNetWorth(state: FireOSState): TotalNetWorthKPI {
 export interface SIPStatusKPI {
   totalInvested: number;
   totalCurrentValue: number;
-  totalPL: number;
+  totalPL: number | null;
   totalXIRR: number | null;
   funds: Array<{
     key: string;
     name: string;
     invested: number;
-    currentValue: number;
-    pl: number;
+    currentValue: number | null;
+    pl: number | null;
     xirr: number | null;
+    valuation: ValuationStatus;
   }>;
+  valuation: ValuationCoverage;
 }
 
 export function sipStatus(state: FireOSState): SIPStatusKPI {
@@ -152,11 +214,16 @@ export function sipStatus(state: FireOSState): SIPStatusKPI {
   let totalXIRR: number | null = null;
   let xiirrCount = 0;
   let xirrSum = 0;
+  const coverage = emptyCoverage();
 
   Object.entries(state.sip).forEach(([key, fund]) => {
     // Try to get scheme code: from fund.schemeCode
     const navCacheKey = fund.schemeCode;
-    const nav = navCacheKey ? state.nav[navCacheKey]?.nav ?? 0 : 0;
+    const entry = navCacheKey ? state.nav[navCacheKey] : undefined;
+    const valuation = fund.units === 0 ? 'zero' : valuationStatus(entry);
+    coverage.totalHoldings++;
+    if (valuation !== 'missing') coverage.pricedHoldings++;
+    coverage.sources.push({ holding: fund.name, status: valuation, ...(entry?.timestamp ? { asOf: entry.timestamp } : {}), ...(entry?.source ? { source: entry.source } : {}) });
 
     // Calculate invested: use costBasis if provided, else calculate from monthlyAmount × months elapsed
     let invested = fund.costBasis || 0;
@@ -170,21 +237,22 @@ export function sipStatus(state: FireOSState): SIPStatusKPI {
       }
     }
 
-    const currentValue = fund.units * nav;
-    const pl = currentValue - invested;
-    const xirr = calculateSipXirr(fund.startDate, fund.monthlyAmount, currentValue);
+    const currentValue = valuation === 'missing' ? null : fund.units * (entry?.nav ?? 0);
+    const pl = currentValue === null ? null : currentValue - invested;
+    const xirr = currentValue === null || valuation !== 'current' ? null : calculateSipXirr(fund.startDate, fund.monthlyAmount, currentValue);
 
     funds.push({
       key,
       name: fund.name,
       invested: isFinite(invested) ? invested : 0,
-      currentValue: isFinite(currentValue) ? currentValue : 0,
-      pl: isFinite(pl) ? pl : 0,
+      currentValue: currentValue !== null && isFinite(currentValue) ? currentValue : null,
+      pl: pl !== null && isFinite(pl) ? pl : null,
       xirr,
+      valuation,
     });
 
     totalInvested += invested;
-    totalCurrentValue += currentValue;
+    if (currentValue !== null) totalCurrentValue += currentValue;
 
     if (xirr !== null) {
       xirrSum += xirr;
@@ -197,14 +265,19 @@ export function sipStatus(state: FireOSState): SIPStatusKPI {
     totalXIRR = xirrSum / xiirrCount;
   }
 
-  const totalPL = totalCurrentValue - totalInvested;
+  coverage.unpricedHoldings = coverage.totalHoldings - coverage.pricedHoldings;
+  coverage.coveragePercent = coverage.totalHoldings > 0 ? (coverage.pricedHoldings / coverage.totalHoldings) * 100 : 100;
+  coverage.staleHoldings = coverage.sources.filter(source => source.status === 'stale').length;
+  coverage.hasUnknownValues = coverage.unpricedHoldings > 0 || coverage.sources.some(source => source.status === 'stale');
+  const totalPL = coverage.hasUnknownValues ? null : totalCurrentValue - totalInvested;
 
   return {
     totalInvested: isFinite(totalInvested) ? totalInvested : 0,
     totalCurrentValue: isFinite(totalCurrentValue) ? totalCurrentValue : 0,
-    totalPL: isFinite(totalPL) ? totalPL : 0,
+    totalPL: totalPL !== null && isFinite(totalPL) ? totalPL : null,
     totalXIRR,
     funds,
+    valuation: coverage,
   };
 }
 

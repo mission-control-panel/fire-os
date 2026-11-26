@@ -47,13 +47,17 @@ export function KpiRow({ state }: { state: FireOSState }) {
         className="sm:col-span-2 xl:col-span-2"
         label="Total Net Worth"
         value={formatCurrency(nw.netWorth, 0)}
-        detail={`Assets ${formatCurrency(nw.assets, 0)} • Liabilities ${formatCurrency(nw.liabilities, 0)}`}
+        detail={nw.valuation.hasUnknownValues
+          ? `${nw.valuation.coveragePercent.toFixed(0)}% priced${nw.valuation.staleHoldings ? ` • ${nw.valuation.staleHoldings} stale` : ''} • ${nw.valuation.unpricedHoldings} unpriced`
+          : `Assets ${formatCurrency(nw.assets, 0)} • Liabilities ${formatCurrency(nw.liabilities, 0)}`}
       />
       <KpiCard
         label="SIP P&L"
-        value={formatCurrency(sip.totalPL, 0)}
-        detail={`Invested ${formatCurrency(sip.totalInvested, 0)} • Current ${formatCurrency(sip.totalCurrentValue, 0)}`}
-        tone={sip.totalPL >= 0 ? 'positive' : 'negative'}
+        value={sip.totalPL === null ? 'Unknown' : formatCurrency(sip.totalPL, 0)}
+        detail={sip.valuation.hasUnknownValues
+          ? `${sip.valuation.coveragePercent.toFixed(0)}% priced${sip.valuation.staleHoldings ? ` • ${sip.valuation.staleHoldings} stale` : ''} • ${sip.valuation.unpricedHoldings} unpriced`
+          : `Invested ${formatCurrency(sip.totalInvested, 0)} • Current ${formatCurrency(sip.totalCurrentValue, 0)}`}
+        tone={sip.totalPL === null ? 'neutral' : sip.totalPL >= 0 ? 'positive' : 'negative'}
       />
 <KpiCard
   label="FI Progress"
