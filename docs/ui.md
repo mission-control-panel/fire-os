@@ -174,9 +174,11 @@ clamped nonnegative and subtracted. Composition percentages use gross assets
 present, otherwise monthly amount × inclusive elapsed local-calendar months
 (date-fns `differenceInCalendarMonths`). The start date may be `YYYY-MM` or a
 persisted full `YYYY-MM-DD` (its month is used); non-padded (`2024-1`) or
-impossible (`2024-13`) months count as zero. SIP XIRR
+impossible (`2024-13`) months count as zero. Fund-level SIP XIRR
 generates one negative monthly flow from start month plus a positive current
-value on now; total XIRR is the simple mean of fund XIRRs. FI target is user
+value on now; portfolio total XIRR uses one combined dated cash-flow solve from
+the transaction ledger when available and labels the legacy SIP schedule fallback
+as estimated. It is no longer a simple mean of fund XIRRs. FI target is user
 entry; progress is current net worth / target (0 when no target), with years
 remaining only when already achieved. Drawdown is max(0, `(high-level)/high`).
 
@@ -542,8 +544,10 @@ SIP status defaults invested value to zero unless costBasis positive; otherwise
 it computes inclusive months between start month and now, with minimum one, and
 multiplies monthlyAmount. Current value is units×NAV. XIRR approximation emits
 one negative equal monthly flow from first-of-start-month for every elapsed
-month plus current value on current date; returns are averaged per fund without
-weighting. XIRR requires a plain `YYYY-MM` start date; a full `YYYY-MM-DD` or a
+month plus current value on current date. Portfolio XIRR uses linked ledger
+flows only when every tracked fund has explicit coverage and all terminal NAVs
+are current; otherwise it is estimated from the SIP schedule or unavailable.
+XIRR requires a plain `YYYY-MM` start date; a full `YYYY-MM-DD` or a
 malformed month returns null XIRR, as do nonpositive contribution or nonpositive
 value. The shared XIRR function requires positive and negative flows,
 drops invalid dates and non-finite amounts (null when fewer than two valid
@@ -556,7 +560,8 @@ Two further KPI helpers are exported but not rendered. `calculatePeriodReturn()`
 filters `CashFlow[]` to `[start, end]` inclusive and delegates to
 `calculateXirr`, returning null when an endpoint is invalid or the in-period flows
 cannot be solved; it never synthesizes historical holding values. It is not the
-value behind the SIP status XIRR above.
+value behind the period-return helper; it is not the value behind the SIP status
+XIRR above.
 `attributeNetWorthChange(start, end, contributions)` returns
 `{ startingValue, contributions, investmentReturn, endingValue }` with
 `investmentReturn = end − start − contributions`, clamping start and

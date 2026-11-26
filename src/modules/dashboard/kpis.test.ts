@@ -65,6 +65,69 @@ describe('XIRR calculations', () => {
 
     expect(result.funds[0].xirr).not.toBeNull();
     expect(result.totalXIRR).toBe(result.funds[0].xirr);
+    expect(result.totalXIRRProvenance).toBe('estimated-sip');
+  });
+
+  it('uses combined dated ledger flows instead of averaging fund XIRRs', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+    const state = initializeState();
+    state.sip = { fund: { name: 'Fund', schemeCode: '123', units: 10, startDate: '2024-01', monthlyAmount: 1_000 } };
+    state.nav = { '123': { schemeCode: '123', nav: 150, timestamp: '2025-01-01T00:00:00Z', ttl: 3_600_000 } };
+    state.transactionLedger.transactions = [
+      { id: 'buy', dedupKey: 'buy', date: '2024-01-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund', amountPaise: 100_000, costProvenance: 'exact' },
+      { id: 'dividend', dedupKey: 'dividend', date: '2024-07-01', type: 'dividend', accountId: 'brokerage', instrumentId: 'fund', amountPaise: 10_000, costProvenance: 'exact' },
+    ];
+    const result = sipStatus(state);
+    expect(result.totalXIRRProvenance).toBe('actual-ledger');
+    expect(result.totalXIRR).not.toBeNull();
+  });
+
+  it('matches a known one-fund ledger reference vector', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+    const state = initializeState();
+    state.sip = { fund: { name: 'Fund', schemeCode: '123', units: 11, startDate: '2024-01', monthlyAmount: 1_000 } };
+    state.nav = { '123': { schemeCode: '123', nav: 100, timestamp: '2025-01-01T00:00:00Z', ttl: 3_600_000 } };
+    state.transactionLedger.transactions = [
+      { id: 'buy', dedupKey: 'buy', date: '2024-01-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund', amountPaise: 100_000, costProvenance: 'exact' },
+    ];
+    const result = sipStatus(state);
+    expect(result.totalXIRR).toBeCloseTo(0.0997136, 6);
+    expect(result.totalXIRRProvenance).toBe('actual-ledger');
+  });
+
+  it('does not mix unrelated or partially covered ledger holdings into actual XIRR', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+    const state = initializeState();
+    state.sip = {
+      first: { name: 'First', schemeCode: '123', units: 10, startDate: '2024-01', monthlyAmount: 1_000 },
+      second: { name: 'Second', schemeCode: '456', units: 10, startDate: '2024-01', monthlyAmount: 1_000 },
+    };
+    state.nav = {
+      '123': { schemeCode: '123', nav: 100, timestamp: '2025-01-01T00:00:00Z', ttl: 3_600_000 },
+      '456': { schemeCode: '456', nav: 100, timestamp: '2025-01-01T00:00:00Z', ttl: 3_600_000 },
+    };
+    state.transactionLedger.transactions = [
+      { id: 'first', dedupKey: 'first', date: '2024-01-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'first', amountPaise: 100_000, costProvenance: 'exact' },
+      { id: 'unrelated', dedupKey: 'unrelated', date: '2024-01-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fd', amountPaise: 900_000, costProvenance: 'exact' },
+    ];
+    expect(sipStatus(state).totalXIRRProvenance).toBe('estimated-sip');
+  });
+
+  it('marks actual XIRR unavailable for stale NAVs', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+    const state = initializeState();
+    state.sip = { fund: { name: 'Fund', schemeCode: '123', units: 10, startDate: '2024-01', monthlyAmount: 1_000 } };
+    state.nav = { '123': { schemeCode: '123', nav: 100, timestamp: '2024-12-01T00:00:00Z', ttl: 3_600_000 } };
+    state.transactionLedger.transactions = [
+      { id: 'buy', dedupKey: 'buy', date: '2024-01-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund', amountPaise: 100_000, costProvenance: 'exact' },
+    ];
+    const result = sipStatus(state);
+    expect(result.totalXIRR).toBeNull();
+    expect(result.totalXIRRProvenance).toBe('unavailable');
   });
 });
 
