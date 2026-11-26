@@ -307,8 +307,12 @@ no request is sent.
 The same Worker serves the read-only `GET /api/market/*` Yahoo proxy with
 Cache-API TTLs and stale fallback.
 OpenRouter credentials remain server-side. `PERSISTED_ALLOWLIST` remains the
-server's top-level output projection; the browser merges proposals into a
-candidate and validates the full persisted state before review/acceptance.
+server's top-level output projection and excludes valuation caches and privacy
+controls; the browser recursively merges assistant-writable proposal sections
+into a candidate and validates the full persisted state before review or
+acceptance. Confirmation is bound to the active identity scope and a state
+fingerprint, so stale review cards are rejected. Nested high-value numeric
+changes still require reauthentication.
 Firestore rules independently validate their write boundary. Full flow and
 boundaries are in [AI reference](ai.md).
 
@@ -421,12 +425,13 @@ inputs/triggers; it does not interact with an employer equity plan.
 
 ### Assistant question and guarded write
 
-Chat latest transcript -> on-demand Nifty fetch -> summarized context -> proxy
-policy/limits -> OpenRouter response -> client displays response -> validates
-any allowlisted proposal -> consent check -> review diff -> optional provider
-reauth -> snapshot -> confirmed local save and optional cloud sync -> local
-audit row. User rejection or any validation/reauth failure leaves portfolio
-unchanged. See [AI reference](ai.md#full-request-trace-from-chat-event-to-model-result).
+Chat latest transcript -> normalized alternating suffix (max 12) -> on-demand
+Nifty fetch -> summarized context -> proxy policy/limits -> OpenRouter response
+-> client displays response -> recursively validates any assistant-writable
+proposal -> consent check -> review diff -> scope/fingerprint check -> optional
+provider reauth -> snapshot -> confirmed local save and optional cloud sync ->
+local audit row. User rejection or any validation, stale-state, or reauth
+failure leaves portfolio unchanged. See [AI reference](ai.md#full-request-trace-from-chat-event-to-model-result).
 
 ## Domain modules and contracts
 

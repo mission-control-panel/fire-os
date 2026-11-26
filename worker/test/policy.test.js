@@ -148,7 +148,7 @@ describe('extractProposedChanges', () => {
 
   it('drops keys outside the persisted allowlist', () => {
     const reply = '{"profile":{"age":40},"assistantActions":[],"someRandomKey":1,"nav":{}}';
-    expect(extractProposedChanges(reply)).toEqual({ profile: { age: 40 }, nav: {} });
+    expect(extractProposedChanges(reply)).toEqual({ profile: { age: 40 } });
   });
 
   it('returns null when only non-allowlisted keys are present', () => {

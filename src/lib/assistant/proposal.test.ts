@@ -104,6 +104,30 @@ describe('classifyProposal', () => {
     expect(analysis.requiresReauth).toBe(false);
     expect(analysis.reasons).toEqual([]);
   });
+
+  it('requires re-authentication for nested high-value holding changes', () => {
+    const state = initializeState();
+    state.fd = { fd1: { amount: 100000, currency: 'INR' } };
+    const analysis = classifyProposal(state, { fd: { fd1: { amount: 1200000 } } });
+    expect(analysis.requiresReauth).toBe(true);
+    expect(analysis.reasons[0]).toContain('fd.fd1.amount');
+  });
+
+  it('requires re-authentication for high-value numeric changes inside arrays', () => {
+    const state = initializeState();
+    state.expenses = [{ amount: 100000, category: 'essential', date: '2026-01-01', linkedToSWP: false }];
+    const analysis = classifyProposal(state, {
+      expenses: [{ amount: 100000 + HIGH_VALUE_THRESHOLD, category: 'essential', date: '2026-01-01', linkedToSWP: false }],
+    });
+    expect(analysis.requiresReauth).toBe(true);
+    expect(analysis.reasons[0]).toContain('expenses[0].amount');
+  });
+
+  it('rejects assistant proposals that mutate valuation caches or privacy controls', () => {
+    const state = initializeState();
+    expect(applyAssistantProposal(state, { nav: {} })).toMatchObject({ ok: false });
+    expect(applyAssistantProposal(state, { assistant: { sendExactFigures: true } })).toMatchObject({ ok: false });
+  });
 });
 
 describe('buildCandidate / computeDiff / applyValidatedProposal', () => {
@@ -121,5 +145,23 @@ describe('buildCandidate / computeDiff / applyValidatedProposal', () => {
     applyValidatedProposal(state, { profile: { fiTarget: 3 } });
     expect(state.profile.fiTarget).toBe(3);
     expect(state.profile.age).toBe(candidate.profile.age);
+  });
+
+  it('deep-merges nested proposals and reports leaf-level diffs', () => {
+    const state = initializeState();
+    state.completedActions = { one: { completedAt: '2026-01-01T00:00:00.000Z' } };
+    const result = applyAssistantProposal(state, { completedActions: { one: { completedAt: '2026-02-01T00:00:00.000Z' } } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.candidate.completedActions.one.completedAt).toBe('2026-02-01T00:00:00.000Z');
+    expect(result.diff).toContainEqual({ path: 'completedActions.one.completedAt', before: '2026-01-01T00:00:00.000Z', after: '2026-02-01T00:00:00.000Z' });
+  });
+
+  it('preserves nested siblings during the actual in-place apply', () => {
+    const state = initializeState();
+    state.completedActions = { one: { completedAt: '2026-01-01T00:00:00.000Z' } };
+    applyValidatedProposal(state, { completedActions: { one: { completedAt: '2026-02-01T00:00:00.000Z' }, two: { completedAt: '2026-03-01T00:00:00.000Z' } } });
+    expect(state.completedActions.one.completedAt).toBe('2026-02-01T00:00:00.000Z');
+    expect(state.completedActions.two.completedAt).toBe('2026-03-01T00:00:00.000Z');
   });
 });

@@ -12,6 +12,11 @@ import type { FireOSState } from '../../types/state';
 import { isPersistedPortfolioData, PERSISTED_STATE_KEYS } from '../../types/state';
 
 const FORBIDDEN_KEYS = new Set(['currentUser', '_lastSavedAt', '_syncMetadata']);
+const ASSISTANT_WRITABLE_KEYS = new Set([
+  'profile', 'mf', 'fd', 'epf', 'sip', 'esop', 'bonds', 'otherHoldings', 'liabilities', 'demat',
+  'goals', 'fundBuckets', 'watchdogRules', 'swpSchedule', 'taxCalendar', 'expenses',
+  'completedActions', 'achievedMilestones', 'insurance', 'esopDetails', 'liquidationRules',
+]);
 const HOLDING_KEYS = [
   'mf',
   'sip',
@@ -46,6 +51,18 @@ function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function mergePlainObjects(current: unknown, proposed: unknown): unknown {
+  if (!isPlainObject(current) || !isPlainObject(proposed)) return deepClone(proposed);
+  const merged: Record<string, unknown> = { ...current };
+  for (const [key, value] of Object.entries(proposed)) merged[key] = mergePlainObjects(merged[key], value);
+  return merged;
+}
+
+/** Stable persisted-state fingerprint used to reject stale confirmations. */
+export function proposalStateFingerprint(state: FireOSState): string {
+  return JSON.stringify(stripRuntime(state));
+}
+
 /**
  * Strip runtime-only fields, producing the persisted shape used for
  * snapshot recording and validation.
@@ -76,14 +93,7 @@ export function buildCandidate(
   const candidate = deepClone(current);
   for (const [key, value] of Object.entries(proposal)) {
     const currentSection = (current as unknown as Record<string, unknown>)[key];
-    if (isPlainObject(value) && isPlainObject(currentSection)) {
-      (candidate as unknown as Record<string, unknown>)[key] = {
-        ...currentSection,
-        ...value,
-      };
-    } else {
-      (candidate as unknown as Record<string, unknown>)[key] = deepClone(value);
-    }
+    (candidate as unknown as Record<string, unknown>)[key] = mergePlainObjects(currentSection, value);
   }
   return candidate;
 }
@@ -99,26 +109,16 @@ export function computeDiff(
   const currentRec = current as unknown as Record<string, unknown>;
   const candidateRec = candidate as unknown as Record<string, unknown>;
 
-  const touched = new Set(
-    Object.keys(candidateRec).filter((key) => JSON.stringify(currentRec[key]) !== JSON.stringify(candidateRec[key]))
-  );
-
-  for (const key of touched) {
-    const before = currentRec[key];
-    const after = candidateRec[key];
+  const visit = (path: string, before: unknown, after: unknown): void => {
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
     if (isPlainObject(before) && isPlainObject(after)) {
-      const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
-      for (const sub of allKeys) {
-        const b = before[sub];
-        const a = after[sub];
-        if (JSON.stringify(b) !== JSON.stringify(a)) {
-          diff.push({ path: `${key}.${sub}`, before: b, after: a });
-        }
-      }
-    } else {
-      diff.push({ path: key, before, after });
+      const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+      for (const key of keys) visit(path ? `${path}.${key}` : key, before[key], after[key]);
+      return;
     }
-  }
+    diff.push({ path, before, after });
+  };
+  for (const key of new Set([...Object.keys(currentRec), ...Object.keys(candidateRec)])) visit(key, currentRec[key], candidateRec[key]);
   return diff;
 }
 
@@ -145,6 +145,7 @@ export function applyAssistantProposal(
     if (FORBIDDEN_KEYS.has(key) || key.startsWith('_')) {
       return { ok: false, reason: `Proposal may not modify runtime field "${key}".` };
     }
+    if (!ASSISTANT_WRITABLE_KEYS.has(key)) return { ok: false, reason: `Assistant may not modify field "${key}".` };
     if (!(PERSISTED_STATE_KEYS as readonly string[]).includes(key)) {
       return { ok: false, reason: `Proposal may not modify unknown field "${key}".` };
     }
@@ -190,19 +191,26 @@ export function classifyProposal(
         reasons.push(`Removes ${removed.length} entr${removed.length === 1 ? 'y' : 'ies'} from "${key}"`);
       }
     }
-    if (isPlainObject(value)) {
-      const currentSection = isPlainObject(currentRec[key]) ? currentRec[key] : {};
-      for (const [sub, afterVal] of Object.entries(value)) {
-        if (typeof afterVal === 'number') {
-          const beforeVal = currentSection[sub];
-          const delta =
-            typeof beforeVal === 'number' ? Math.abs(afterVal - beforeVal) : Math.abs(afterVal);
-          if (delta >= HIGH_VALUE_THRESHOLD) {
-            reasons.push(`Large value change at "${key}.${sub}" (Δ ₹${Math.round(delta).toLocaleString('en-IN')})`);
-          }
+    const visit = (path: string, before: unknown, after: unknown): void => {
+      if (typeof after === 'number') {
+        const delta = typeof before === 'number' ? Math.abs(after - before) : Math.abs(after);
+        if (delta >= HIGH_VALUE_THRESHOLD) reasons.push(`Large value change at "${path}" (Δ ₹${Math.round(delta).toLocaleString('en-IN')})`);
+        return;
+      }
+      if (isPlainObject(after)) {
+        for (const [nested, nestedValue] of Object.entries(after)) {
+          visit(`${path}.${nested}`, isPlainObject(before) ? before[nested] : undefined, nestedValue);
+        }
+        return;
+      }
+      if (Array.isArray(after)) {
+        for (let index = 0; index < after.length; index += 1) {
+          visit(`${path}[${index}]`, Array.isArray(before) ? before[index] : undefined, after[index]);
         }
       }
-    } else if (Array.isArray(value) && Array.isArray(currentRec[key])) {
+    };
+    visit(key, currentRec[key], value);
+    if (Array.isArray(value) && Array.isArray(currentRec[key])) {
       const beforeArr = currentRec[key] as unknown[];
       if (value.length < beforeArr.length && beforeArr.length - value.length >= 10) {
         reasons.push(`Bulk removal from "${key}" (${beforeArr.length} → ${value.length})`);
@@ -225,10 +233,6 @@ export function applyValidatedProposal(
   const stateRec = state as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(proposal)) {
     const currentSection = stateRec[key];
-    if (isPlainObject(value) && isPlainObject(currentSection)) {
-      stateRec[key] = { ...currentSection, ...value };
-    } else {
-      stateRec[key] = deepClone(value);
-    }
+    stateRec[key] = mergePlainObjects(currentSection, value);
   }
 }

@@ -29,8 +29,10 @@ processing; the Profile privacy notice and the assistant consent copy state this
 explicitly. Write access is
 explicitly toggled in the panel and can be revoked. When the authenticated user
 scope changes, pending proposals and attachments are cleared. Chat history is
-provided by Deep Chat in the browser and only the most recent 12 alternating
-messages are sent. Starter prompts submit through the same request handler.
+provided by Deep Chat in the browser; the client normalizes the longest valid
+user-starting, user-ending alternating suffix and sends at most 12 messages.
+Whitespace-only turns are removed and malformed/non-alternating prefixes are
+discarded. Starter prompts submit through the same request handler.
 
 The UI attempts a fresh Nifty fetch before each question. A successful result is
 stored locally without cloud sync; failure is non-fatal and uses the existing
@@ -136,19 +138,20 @@ Model configuration defaults to `openrouter/free`, then configured free-model
 fallbacks, capped at OpenRouter's 3-model limit. Reply extraction reads first
 choice content (or compatible `content` field). Proposal extraction parses the
 first greedy `{...}` substring as a Zod-validated object envelope, then
-`PERSISTED_ALLOWLIST` projects allowed persisted top-level fields and removes
-runtime/underscore keys. Extraction does not establish semantic correctness;
+`PERSISTED_ALLOWLIST` projects allowed assistant-writable top-level portfolio
+and action fields and removes runtime/underscore keys, including valuation
+caches and privacy controls. Extraction does not establish semantic correctness;
 the browser applies the complete persisted-state schema to the merged candidate
 before review or acceptance. Firestore rules independently validate cloud writes.
 
 ## Proposal validation and user-mediated writes
 
 `applyAssistantProposal()` requires a non-empty plain object of ≤25 keys.
-Every key must be a `PERSISTED_STATE_KEYS` member and cannot start with `_` or
-be a runtime field. It one-level merges object sections into current state,
-strips runtime fields and checks the complete candidate with
-`isPersistedPortfolioData()`. On success it returns a field-level diff. Arrays
-are shown as section replacements; object section diffs are one level deep.
+Every key must be an assistant-writable persisted portfolio/action field and
+cannot start with `_` or be a runtime field. It recursively merges plain
+object sections into current state, strips runtime fields and checks the
+complete candidate with `isPersistedPortfolioData()`. On success it returns a
+recursive leaf-level diff. Arrays are shown as section replacements.
 
 If write consent is disabled, the proposal is not applied and the UI asks the
 user to enable writes. With consent, the user sees before/after fields and
@@ -158,8 +161,10 @@ least 10. Google users reauthenticate by popup; password users re-enter the
 password; guests must type `CONFIRM`. Unsupported provider types have no
 successful reauth path.
 
-On confirm the client revalidates against current state, records a pre-change
-snapshot, applies the proposal, and persists. Cloud save is a separate checkbox
+On confirm the client revalidates against current state and rejects a stale
+proposal if the active identity scope or state fingerprint changed since the
+review card was created. It then records a pre-change snapshot, applies the
+proposal, and persists. Cloud save is a separate checkbox
 enabled only for signed-in users. Failed cloud persistence reports that local
 change remains and offers undo. The audit stores at most 50 entries per scope,
 newest last; it includes timestamp, first 200 chars of triggering question,
@@ -253,17 +258,17 @@ and are independent of the assistant audit.
 Server proposal extraction uses greedy regex from first `{` through last `}` in
 reply; malformed/mixed JSON text yields no proposal. Server allowlist prevents
 unknown top-level output; nested payloads remain the browser's responsibility.
-Client constructs candidate from current state and one-level merges each plain
-object section; complete persisted-state validator then validates recursive
-known shapes. Extra unknown nested keys fail exact shape checks.
+Client constructs candidate from current state and recursively merges each
+plain-object section; complete persisted-state validator then validates
+recursive known shapes. Extra unknown nested keys fail exact shape checks.
 
 Client `classifyProposal()` treats top-level object updates in holdings key set
-as a full key set when detecting removals; because the actual candidate merge
-preserves existing keys for one-level object proposals, an omission in proposal
-is not a deletion in applied candidate. Proposals replacing arrays can trigger
-reauth if at least ten entries disappear. High-value threshold applies numeric
-properties inside object values, not arbitrary numeric arrays. Validation is
-rerun immediately before confirm to catch state changes since preview.
+as a full key set when detecting removals. Recursive candidate merging
+preserves omitted nested siblings, while explicit numeric changes at any
+nested path are checked for the high-value reauthentication threshold.
+Proposals replacing arrays can trigger reauth if at least ten entries
+disappear. Validation, scope, and state fingerprint are rerun immediately
+before confirm to catch identity or state changes since preview.
 
 Snapshot flow: commit records current state before apply, applies values in
 place, then `persistPortfolioState()`. Local save happens before awaited cloud

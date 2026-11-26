@@ -15,6 +15,8 @@ import {
   consentScope,
   defaultConsent,
   hasConfirmedAssistantAction,
+  normalizeConversationMessages,
+  proposalStateFingerprint,
   queryAssistant,
   readAssistantAudit,
   readConsent,
@@ -64,6 +66,8 @@ let pendingProposal: {
   question: string;
   proposedChanges: Record<string, unknown>;
   context: SanitizedContext;
+  fingerprint: string;
+  scope: string;
 } | null = null;
 const MAX_CONVERSATION_MESSAGES = 12;
 
@@ -281,17 +285,17 @@ async function handleDeepChatRequest(
         role: message.role === 'ai' ? ('assistant' as const) : ('user' as const),
         content: message.text ?? '',
       }))
-      .filter((message) => message.content.trim())
-      .slice(-MAX_CONVERSATION_MESSAGES);
+      .filter((message) => message.content.trim());
+    const normalizedMessages = normalizeConversationMessages(requestMessages).slice(-MAX_CONVERSATION_MESSAGES);
     const data = await queryAssistant(question, contextSummary, {
       sendExact: contextSummary.sendExact,
-      messages: requestMessages,
+      messages: normalizedMessages,
       idToken,
     });
 
     const reply = data.reply || 'No reply received.';
     pendingProposal = data.proposedChanges
-      ? { question, proposedChanges: data.proposedChanges, context: contextSummary }
+      ? { question, proposedChanges: data.proposedChanges, context: contextSummary, fingerprint: proposalStateFingerprint(activeContext.state), scope: getScope() }
       : null;
     signals.onResponse({ text: reply });
   } catch (err) {
@@ -422,7 +426,7 @@ function renderAssumptions(context: SanitizedContext): HTMLElement {
 
 function renderProposalCard(
   messages: HTMLElement,
-  proposal: { question: string; proposedChanges: Record<string, unknown>; context: SanitizedContext }
+  proposal: { question: string; proposedChanges: Record<string, unknown>; context: SanitizedContext; fingerprint: string; scope: string }
 ): void {
   if (!activeContext) return;
   const { question, proposedChanges, context } = proposal;
@@ -554,10 +558,10 @@ function renderProposalCard(
           refreshAuditSection();
           return;
         }
-        void commitProposal(card, messages, question, proposedChanges, diff, cloudSave);
+        void commitProposal(card, messages, question, proposedChanges, diff, cloudSave, proposal.fingerprint, proposal.scope);
       });
     } else {
-      void commitProposal(card, messages, question, proposedChanges, diff, cloudSave);
+      void commitProposal(card, messages, question, proposedChanges, diff, cloudSave, proposal.fingerprint, proposal.scope);
     }
   });
 
@@ -670,10 +674,40 @@ async function commitProposal(
   question: string,
   proposedChanges: Record<string, unknown>,
   diff: ProposalDiffEntry[],
-  cloudSave: boolean
+  cloudSave: boolean,
+  expectedFingerprint: string,
+  expectedScope: string
 ): Promise<void> {
   if (!activeContext) return;
   const state = activeContext.state;
+
+  if (!readConsent(getScope()).allowWrites) {
+    appendAssistantAction(getScope(), {
+      question: question.slice(0, 200),
+      diff,
+      decision: 'validation-failed',
+      cloudSaved: false,
+      notes: ['Write consent was revoked after the proposal review.'],
+    });
+    card.remove();
+    appendMessage(messages, 'assistant-note', 'Write access was revoked; nothing was changed.');
+    refreshAuditSection();
+    return;
+  }
+
+  if (getScope() !== expectedScope || proposalStateFingerprint(state) !== expectedFingerprint) {
+    appendAssistantAction(getScope(), {
+      question: question.slice(0, 200),
+      diff,
+      decision: 'validation-failed',
+      cloudSaved: false,
+      notes: ['Proposal is stale because portfolio state changed after review.'],
+    });
+    card.remove();
+    appendMessage(messages, 'assistant-note', 'Proposal is stale; nothing was changed. Ask the assistant again.');
+    refreshAuditSection();
+    return;
+  }
 
   const validation = applyAssistantProposal(state, proposedChanges);
   if (!validation.ok) {

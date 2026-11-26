@@ -1,9 +1,22 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { queryAssistant, AssistantRequestError } from './client';
+import { normalizeConversationMessages, queryAssistant, AssistantRequestError } from './client';
 
 describe('queryAssistant client', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+  });
+
+  it('keeps a complete alternating suffix when history exceeds the limit', () => {
+    const messages = Array.from({ length: 14 }, (_, index) => ({
+      role: (index % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: `message-${index}`,
+    }));
+    messages.push({ role: 'user', content: 'latest' });
+    const normalized = normalizeConversationMessages(messages);
+    expect(normalized.length).toBeLessThanOrEqual(12);
+    expect(normalized[0].role).toBe('user');
+    expect(normalized[normalized.length - 1]?.role).toBe('user');
+    expect(normalized.every((message, index) => message.role === (index % 2 === 0 ? 'user' : 'assistant'))).toBe(true);
   });
 
   afterEach(() => {
@@ -34,6 +47,21 @@ describe('queryAssistant client', () => {
     expect(init.method).toBe('POST');
     expect(init.headers['Content-Type']).toBe('application/json');
     expect(init.headers.Authorization).toBeUndefined();
+  });
+
+  it('trims the direct question consistently with the latest message', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ reply: 'ok' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await queryAssistant('  hello  ', {});
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.question).toBe('hello');
+    expect(body.messages).toEqual([{ role: 'user', content: 'hello' }]);
   });
 
   it('sends the Firebase ID token as a bearer credential when provided', async () => {
