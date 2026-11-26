@@ -14,6 +14,19 @@ export interface AssistantConversationMessage {
   content: string;
 }
 
+/** Keep the longest valid suffix: user-starting, alternating, user-ending. */
+export function normalizeConversationMessages(messages: AssistantConversationMessage[]): AssistantConversationMessage[] {
+  const clean = messages.filter((message) => message.content.trim());
+  const end = clean.length - 1;
+  if (end < 0 || clean[end].role !== 'user') return [];
+  for (let start = Math.max(0, end - 11); start <= end; start += 1) {
+    const candidate = clean.slice(start, end + 1);
+    if (candidate[0].role !== 'user' || candidate.length % 2 === 0) continue;
+    if (candidate.every((message, index) => message.role === (index % 2 === 0 ? 'user' : 'assistant'))) return candidate;
+  }
+  return [{ role: 'user', content: clean[end].content }];
+}
+
 export class AssistantRequestError extends Error {
   constructor(
     message: string,
@@ -58,7 +71,7 @@ export async function queryAssistant(
       body: JSON.stringify({
         question,
         contextSummary,
-        messages: options.messages ?? [{ role: 'user', content: question }],
+        messages: normalizeConversationMessages(options.messages ?? [{ role: 'user', content: question }]),
         ...(options.sendExact !== undefined ? { sendExact: options.sendExact } : {}),
       }),
       signal: controller.signal,

@@ -46,6 +46,18 @@ function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function mergePlainObjects(current: unknown, proposed: unknown): unknown {
+  if (!isPlainObject(current) || !isPlainObject(proposed)) return deepClone(proposed);
+  const merged: Record<string, unknown> = { ...current };
+  for (const [key, value] of Object.entries(proposed)) merged[key] = mergePlainObjects(merged[key], value);
+  return merged;
+}
+
+/** Stable persisted-state fingerprint used to reject stale confirmations. */
+export function proposalStateFingerprint(state: FireOSState): string {
+  return JSON.stringify(stripRuntime(state));
+}
+
 /**
  * Strip runtime-only fields, producing the persisted shape used for
  * snapshot recording and validation.
@@ -76,14 +88,7 @@ export function buildCandidate(
   const candidate = deepClone(current);
   for (const [key, value] of Object.entries(proposal)) {
     const currentSection = (current as unknown as Record<string, unknown>)[key];
-    if (isPlainObject(value) && isPlainObject(currentSection)) {
-      (candidate as unknown as Record<string, unknown>)[key] = {
-        ...currentSection,
-        ...value,
-      };
-    } else {
-      (candidate as unknown as Record<string, unknown>)[key] = deepClone(value);
-    }
+    (candidate as unknown as Record<string, unknown>)[key] = mergePlainObjects(currentSection, value);
   }
   return candidate;
 }
@@ -99,26 +104,16 @@ export function computeDiff(
   const currentRec = current as unknown as Record<string, unknown>;
   const candidateRec = candidate as unknown as Record<string, unknown>;
 
-  const touched = new Set(
-    Object.keys(candidateRec).filter((key) => JSON.stringify(currentRec[key]) !== JSON.stringify(candidateRec[key]))
-  );
-
-  for (const key of touched) {
-    const before = currentRec[key];
-    const after = candidateRec[key];
+  const visit = (path: string, before: unknown, after: unknown): void => {
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
     if (isPlainObject(before) && isPlainObject(after)) {
-      const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
-      for (const sub of allKeys) {
-        const b = before[sub];
-        const a = after[sub];
-        if (JSON.stringify(b) !== JSON.stringify(a)) {
-          diff.push({ path: `${key}.${sub}`, before: b, after: a });
-        }
-      }
-    } else {
-      diff.push({ path: key, before, after });
+      const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+      for (const key of keys) visit(path ? `${path}.${key}` : key, before[key], after[key]);
+      return;
     }
-  }
+    diff.push({ path, before, after });
+  };
+  for (const key of new Set([...Object.keys(currentRec), ...Object.keys(candidateRec)])) visit(key, currentRec[key], candidateRec[key]);
   return diff;
 }
 

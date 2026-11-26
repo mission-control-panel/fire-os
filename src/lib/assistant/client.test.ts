@@ -1,9 +1,22 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { queryAssistant, AssistantRequestError } from './client';
+import { normalizeConversationMessages, queryAssistant, AssistantRequestError } from './client';
 
 describe('queryAssistant client', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+  });
+
+  it('keeps a complete alternating suffix when history exceeds the limit', () => {
+    const messages = Array.from({ length: 14 }, (_, index) => ({
+      role: (index % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: `message-${index}`,
+    }));
+    messages.push({ role: 'user', content: 'latest' });
+    const normalized = normalizeConversationMessages(messages);
+    expect(normalized.length).toBeLessThanOrEqual(12);
+    expect(normalized[0].role).toBe('user');
+    expect(normalized[normalized.length - 1]?.role).toBe('user');
+    expect(normalized.every((message, index) => message.role === (index % 2 === 0 ? 'user' : 'assistant'))).toBe(true);
   });
 
   afterEach(() => {

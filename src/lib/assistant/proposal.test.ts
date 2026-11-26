@@ -122,4 +122,14 @@ describe('buildCandidate / computeDiff / applyValidatedProposal', () => {
     expect(state.profile.fiTarget).toBe(3);
     expect(state.profile.age).toBe(candidate.profile.age);
   });
+
+  it('deep-merges nested proposals and reports leaf-level diffs', () => {
+    const state = initializeState();
+    state.completedActions = { one: { completedAt: '2026-01-01T00:00:00.000Z' } };
+    const result = applyAssistantProposal(state, { completedActions: { one: { completedAt: '2026-02-01T00:00:00.000Z' } } });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.candidate.completedActions.one.completedAt).toBe('2026-02-01T00:00:00.000Z');
+    expect(result.diff).toContainEqual({ path: 'completedActions.one.completedAt', before: '2026-01-01T00:00:00.000Z', after: '2026-02-01T00:00:00.000Z' });
+  });
 });
