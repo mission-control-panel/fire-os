@@ -397,6 +397,8 @@ function renderAssumptions(context: SanitizedContext): HTMLElement {
     ['FI target', context.fiTargetRange],
     ['Annual expenses', context.profileMasked.annualExpenses],
     ['Retirement outlook', `${context.retirementProjection.status} · eligible ${context.retirementProjection.fireEligibleCorpusRange}`],
+    ['Safety runway', `${context.safety.runway} · accessible ${context.safety.accessibleValueRange}`],
+    ['Crash / drift', `${context.safety.crashStatus} · ${context.safety.driftActions === 'unavailable' ? 'drift unavailable' : `${context.safety.driftActions} action(s)`}`],
     ['Holdings', holdingsLabel(context.holdingsSummary)],
     ['Market data', marketLabel(context.nifty50)],
     ['Precision', context.sendExact ? 'Exact figures sent' : 'Range estimates only'],

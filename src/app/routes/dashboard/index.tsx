@@ -18,7 +18,7 @@ import { usePortfolioSaved } from '../../providers';
 import type { HistoricalSeries } from '../../../types/api';
 import type { FireOSState } from '../../../types/state';
 import { BenchmarkCard, CompositionCard, FiGoalCard, NetWorthTrendCard } from './charts';
-import { KpiRow, PortfolioSummary, RetirementReadinessCard } from './kpi-cards';
+import { KpiRow, PortfolioSummary, RetirementReadinessCard, SafetyReadinessCard } from './kpi-cards';
 import { CrashAlertBanner, DataTrustPanel } from './trust-panel';
 import {
   CashflowSummary,
@@ -41,6 +41,7 @@ export function Dashboard({
       <CrashAlertBanner />
       <KpiRow state={state} />
       <RetirementReadinessCard state={state} />
+      <SafetyReadinessCard state={state} />
       <CashflowSummary state={state} />
       <DataTrustPanel state={state} />
       <PortfolioSummary state={state} />

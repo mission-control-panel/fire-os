@@ -1,6 +1,6 @@
 import type { FireOSState } from '../../types/state';
-import { checkWatchdogRules, floatIndicator, calculateAllocationDrift } from '../../core/feature-ports';
-import { resolveFundBucket, bucketTargets, DEFAULT_FUND_BUCKETS } from '../../lib/fundMatcher';
+import { checkWatchdogRules, floatIndicator } from '../../core/feature-ports';
+import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 
 export interface ActionItem {
   id: string;              // Unique key for checkbox persistence
@@ -90,32 +90,7 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
   }
 
   // 5. Portfolio drift > 5% (this-month)
-  const buckets = state.fundBuckets?.length ? state.fundBuckets : DEFAULT_FUND_BUCKETS;
-  const holdings: Record<string, number> = {};
-  for (const bucket of buckets) holdings[bucket.id] = 0;
-
-  const processFund = (fund: { name: string; bucketId?: string; schemeCode?: string; units: number }) => {
-    const schemeCode = fund.schemeCode || '';
-    const nav = schemeCode ? state.nav[schemeCode]?.nav ?? 0 : 0;
-    const value = fund.units * nav;
-    if (value > 0) {
-      const bucketId = resolveFundBucket({ name: fund.name }, buckets);
-      holdings[bucketId] = (holdings[bucketId] ?? 0) + value;
-    }
-  };
-
-  if (state.sip) {
-    Object.values(state.sip).forEach(processFund);
-  }
-  if (state.mf) {
-    Object.values(state.mf).forEach(processFund);
-  }
-
-  const targetFundValue = Object.values(holdings).reduce((sum, value) => sum + value, 0);
-  const otherHoldingsValue = Object.values(state.otherHoldings || {})
-    .reduce((sum, holding) => sum + (holding.amount || 0), 0);
-  const totalValue = targetFundValue + otherHoldingsValue;
-  const drift = calculateAllocationDrift(holdings, totalValue, bucketTargets(buckets));
+  const drift = portfolioSafetyReport(state).allocation;
   if (drift.recommendations.length > 0) {
     addAction({
       id: `portfolio-drift-${currentYear}-${currentMonth}`,

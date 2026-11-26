@@ -5,6 +5,7 @@ import type { AuthSession } from '../lib/authCoordinator';
 import type { PortfolioSession } from './portfolio-session';
 import type { PortfolioEnvelope } from '../types/firebase';
 import type { FireOSState } from '../types/state';
+import { analyzeCrashProtocol, portfolioSafetyReport } from '../modules/financial-safety/safety-engine';
 import { applyPersistedState } from '../types/state';
 import { applyEnvelopeToState, buildEnvelopeFromState, mergeEnvelopes } from '../lib/merge';
 import { persistPortfolioState } from '../lib/storage';
@@ -239,10 +240,13 @@ export class AuthSessionController {
         monitorNiftyLevel((alert) => {
           if (!authCoordinator.isCurrent(session)) return;
           if (alert) {
-            const totalBonds = Object.values(state.bonds || {}).reduce((sum, bond) => sum + bond.amount, 0);
-            if (alert.severity === 'medium') alert.deployAmount = totalBonds * 0.1;
-            else if (alert.severity === 'high') alert.deployAmount = totalBonds * 0.15;
-            else if (alert.severity === 'critical') alert.deployAmount = totalBonds * 0.25;
+            const safety = portfolioSafetyReport(state);
+            const crash = analyzeCrashProtocol({
+              liquidity: safety.liquidity,
+              currentDrawdownPercent: alert.crashPercentage,
+            });
+            const trigger = alert.severity === 'medium' ? 10 : alert.severity === 'high' ? 15 : 25;
+            alert.deployAmount = crash.levels.find(level => level.drawdownTriggerPercent === trigger)?.amount ?? undefined;
             console.info('Crash alert detected:', {
               crashPercentage: alert.crashPercentage,
               severity: alert.severity,

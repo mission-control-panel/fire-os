@@ -148,6 +148,18 @@ describe('buildContextSummary', () => {
     expect(ctx.retirementProjection.requiredCorpusRange).not.toBe('unavailable');
   });
 
+  it('shares safety runway and allocation status with the assistant', () => {
+    const state = initializeState();
+    state.profile.annualExpenses = 50_000;
+    state.fd = { fd1: { amount: 1_000_000, currency: 'INR' } };
+
+    const ctx = buildContextSummary(state);
+    expect(ctx.safety.liquidityStatus).toBe('available');
+    expect(ctx.safety.runway).toBe('12+ months');
+    expect(ctx.safety.crashStatus).toBe('insufficient-data');
+    expect(ctx.safety.driftActions).toBe('unavailable');
+  });
+
   it('includes Nifty level, 52-week high, drawdown, and freshness metadata', () => {
     const state = initializeState();
     const timestamp = new Date().toISOString();

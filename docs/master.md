@@ -436,6 +436,7 @@ unchanged. See [AI reference](ai.md#full-request-trace-from-chat-event-to-model-
 | Market data | Scheme code/currency/ticker | Cache entries with timestamp, source/status | `src/modules/api/` |
 | Dashboard KPIs | All assets, liabilities, caches, profile | Net worth, P&L/XIRR, composition, drawdown | `src/modules/dashboard/kpis.ts` |
 | Crash/watchdog | Nifty high/current; manually-entered fund rules | Severity alert and recommendation strings | `nifty-monitor.ts`, `fund-manager-alerts.ts` |
+| Safety planning | Explicit cash/fund/FD/restricted classifications, essential expenses, fresh Nifty and fund valuations, user bucket targets | Reserve-preserving emergency runway, capped crash deployment, allocation drift | `modules/financial-safety/safety-engine.ts` |
 | Tax | SIP units, investment basis, NAV, tax calendar | Harvest estimates, 80C progress display | `calculators/tax/` |
 | Retirement | Net worth, FI goal, SIP, assumptions | Simulated FI age/coast status, runway | `calculators/`, `lib/calculations.ts` |
 | Plan | State + watchdog/insurance/tax rules | Health band, actions, milestones/history | `modules/plan/` |
@@ -462,6 +463,15 @@ unchanged. See [AI reference](ai.md#full-request-trace-from-chat-event-to-model-
   [UI](ui.md).
 - `watchdogRules` hold user-entered observations; source code does not crawl
   manager changes, fund AUM, blocked days or market feeds to populate them.
+- Emergency runway and crash deployment use the shared read-only safety engine.
+  It preserves a configurable default 12-month essential-expense reserve, models
+  FD penalties, excludes restricted/illiquid assets from accessible runway, and
+  returns explicit unavailable/insufficient-data states for missing expenses or
+  stale valuations. Fixed deposits may carry an optional
+  `earlyRedemptionPenaltyRate` in the persisted holding shape; absent metadata
+  is treated as zero rather than guessed. Crash levels are recommendations only
+  and never create orders. Allocation drift uses the same validated target-band calculation in
+  the calculator, dashboard, plan and Assistant context.
 
 ## Build, route and test paths
 

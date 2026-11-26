@@ -9,7 +9,8 @@ import './styles.css';
 import { initTaxModule } from './tax';
 import { calculateMonthlyWithdrawal, recordMonthlyWithdrawal, DEFAULT_FUND_BUCKETS } from './swp-scheduler';
 import { compareFIScenarios, type FIScenarioInput, type FIScenarioResult } from './scenario-modeler';
-import { emergencyRunway, sipPauseImpact } from '../../lib/calculations';
+import { sipPauseImpact } from '../../lib/calculations';
+import { analyzeCrashProtocol, portfolioSafetyReport } from '../financial-safety/safety-engine';
 
 let activeContext = createFeatureContext();
 let D = activeContext.state;
@@ -21,23 +22,6 @@ export function initCalculatorsModule(containerId: string, context: FeatureConte
   if (!container) return;
   renderCalculators(container, context);
   autoFetchNiftyData();
-  // Add crash fund source selector handler
-  setupCrashFundSelector();
-}
-
-/** Set up change listener for crash fund source dropdown. */
-function setupCrashFundSelector(): void {
-  const select = document.getElementById('crash-portfolio-select') as HTMLSelectElement | null;
-  if (!select) return;
-  select.addEventListener('change', (e) => {
-    const idx = (e.target as HTMLSelectElement).selectedIndex;
-    if (idx > 0) {
-      const option = select.options[idx];
-      const selectedValue = parseInt(option.value, 10);
-      // TODO: integrate with crash protocol calculation using selected asset
-      activeContext?.ports.ui.showToast(`Crash fund selected: ${option.text}`, 2000, 'info');
-    }
-  });
 }
 
 // Auto-fetch Nifty data on init
@@ -99,65 +83,36 @@ export function renderCalculators(container: HTMLElement, context: FeatureContex
 }
 
 function renderCrashProtocol(): string {
-  // Build portfolio dropdown options: bonds, SIP, MF, other holdings, demat
-  const options: { label: string; value: number }[] = [];
-  for (const [key, bond] of Object.entries(D.bonds || {})) {
-    options.push({ label: `Bond: ${key} (₹${(bond.amount || 0).toLocaleString('en-IN')})`, value: bond.amount || 0 });
-  }
-  for (const [key, sip] of Object.entries(D.sip || {})) {
-    const nav = sip.schemeCode ? D.nav[sip.schemeCode]?.nav ?? 0 : 0;
-    const value = (sip.units || 0) * nav;
-    if (value > 0) options.push({ label: `SIP: ${sip.name || key} (₹${value.toLocaleString('en-IN')})`, value });
-  }
-  for (const [key, mf] of Object.entries(D.mf || {})) {
-    const nav = mf.schemeCode ? D.nav[mf.schemeCode]?.nav ?? 0 : 0;
-    const value = (mf.units || 0) * nav;
-    if (value > 0) options.push({ label: `MF: ${mf.name || key} (₹${value.toLocaleString('en-IN')})`, value });
-  }
-  for (const [key, other] of Object.entries(D.otherHoldings || {})) {
-    if (other.amount > 0) options.push({ label: `Other: ${other.name || key} (₹${(other.amount || 0).toLocaleString('en-IN')})`, value: other.amount || 0 });
-  }
-  for (const [key, demat] of Object.entries(D.demat || {})) {
-    const value = demat.currentValue || 0;
-    if (value > 0) options.push({ label: `Demat: ${demat.name || key} (₹${value.toLocaleString('en-IN')})`, value });
-  }
-
-  const totalBonds = Object.values(D.bonds || {}).reduce((sum, b) => sum + b.amount, 0);
-  const defaultCrashFund = totalBonds;
-
-  // Amounts to deploy based on the crash fund
-  const deploy10 = defaultCrashFund * 0.10;
-  const deploy15 = defaultCrashFund * 0.15;
-  const deploy25 = defaultCrashFund * 0.25;
+  const safety = portfolioSafetyReport(D);
+  const crashLevels = safety.crash.levels;
+  const levelAmount = (trigger: number) => crashLevels.find(level => level.drawdownTriggerPercent === trigger)?.amount;
+  const deploy10 = levelAmount(10);
+  const deploy15 = levelAmount(15);
+  const deploy25 = levelAmount(25);
+  const defaultCrashFund = safety.crash.crashFund;
+  const amountLabel = (amount: number | null | undefined) => amount === null || amount === undefined ? 'Unavailable' : formatCurrency(amount);
 
   return `
     <div class="calc-card">
       <h3>Market Crash Simulator</h3>
       <p class="calc-info">How much to deploy if market crashes?</p>
 
-      <div class="calc-input-group">
-        <label for="crash-portfolio-select">Crash Fund Source (₹)</label>
-        <select id="crash-portfolio-select" class="form-select">
-          <option value="">-- Select portfolio asset --</option>
-          ${options.map((o, i) => `<option value="${i}" ${i === 0 ? 'selected' : ''}>${o.label}</option>`).join('')}
-        </select>
-        <input type="number" id="crash-portfolio" value="${defaultCrashFund}" style="display:none" readonly>
-      </div>
+      <p class="calc-info">Available crash fund after preserving the emergency reserve: ${amountLabel(defaultCrashFund)}</p>
 
       <div class="crash-scenarios">
         <div class="scenario">
           <span class="scenario-label">10% Crash</span>
-          <span class="scenario-value">${formatCurrency(deploy10)}</span>
+          <span class="scenario-value">${amountLabel(deploy10)}</span>
           <span class="scenario-desc">Invest to average down</span>
         </div>
         <div class="scenario">
           <span class="scenario-label">15% Crash</span>
-          <span class="scenario-value">${formatCurrency(deploy15)}</span>
+          <span class="scenario-value">${amountLabel(deploy15)}</span>
           <span class="scenario-desc">Aggressive buy</span>
         </div>
         <div class="scenario">
           <span class="scenario-label">25% Crash</span>
-          <span class="scenario-value">${formatCurrency(deploy25)}</span>
+          <span class="scenario-value">${amountLabel(deploy25)}</span>
           <span class="scenario-desc">Max deployment</span>
         </div>
       </div>
@@ -170,23 +125,19 @@ function renderCrashProtocol(): string {
         <label>Current Nifty Level (₹)</label>
         <input type="number" id="nifty-current" value="${D.niftyData?.level || ''}">
       </div>
-      <p id="nifty-status" class="calc-info">${D.niftyData ? `${D.niftyData.status ?? 'legacy'} data from ${D.niftyData.source}. Updated: ${new Date(D.niftyData.timestamp).toLocaleString()}` : 'Live Nifty data unavailable. Enter both values manually before interpreting drawdown.'}</p>
+      <p id="nifty-status" class="calc-info">${D.niftyData ? `${D.niftyData.status ?? 'legacy'} data from ${D.niftyData.source}. Updated: ${new Date(D.niftyData.timestamp).toLocaleString()}` : 'Live Nifty data unavailable. Enter both values manually before interpreting drawdown.'} ${safety.crash.status === 'available' ? `Reserve ${formatCurrency(safety.crash.reserveAmount ?? 0)} preserved.` : 'Reserve and deployment are unavailable until expenses and fresh valuations are known.'}</p>
       <button id="refresh-nifty-btn" class="btn-primary">⚡ Refresh Nifty</button>
     </div>
   `;
 }
 
 function renderEmergencyRunway(): string {
-  const monthlyExpenses = D.profile.annualExpenses || 0;
-  const annualExpenses = monthlyExpenses * 12;
-
-  const mfValue = Object.values(D.sip)
-    .reduce((sum, sip) => sum + (sip.units * (sip.schemeCode ? D.nav[sip.schemeCode]?.nav || 0 : 0)), 0);
-  const fdValue = D.fd.fd?.amount || 0;
-  const buffer = 0; // From profile if added
-
-  const liquidAssets = mfValue + fdValue + buffer;
-  const runwayMonths = Math.floor(emergencyRunway(liquidAssets, monthlyExpenses));
+  const safety = portfolioSafetyReport(D);
+  const liquidity = safety.liquidity;
+  const monthlyExpenses = liquidity.monthlyEssentialExpenses;
+  const annualExpenses = monthlyExpenses === null ? 0 : monthlyExpenses * 12;
+  const runwayMonths = liquidity.runwayMonths === null ? null : Math.floor(liquidity.runwayMonths);
+  const display = (value: number | null) => value === null ? 'Unavailable' : formatCurrency(value);
 
   return `
     <div class="calc-card">
@@ -196,30 +147,30 @@ function renderEmergencyRunway(): string {
       <div class="runway-breakdown">
         <div class="runway-item">
           <span class="label">Monthly Expenses</span>
-          <span class="value">${formatCurrency(monthlyExpenses)}</span>
-          <span class="sub">Annual: ${formatCurrency(annualExpenses)}</span>
+          <span class="value">${display(monthlyExpenses)}</span>
+          <span class="sub">Annual: ${monthlyExpenses === null ? 'Unavailable' : formatCurrency(annualExpenses)}</span>
         </div>
         <div class="runway-item">
           <span class="label">Mutual Funds</span>
-          <span class="value">${formatCurrency(mfValue)}</span>
+          <span class="value">${liquidity.status === 'available' ? formatCurrency(liquidity.liquidFunds) : 'Unavailable'}</span>
         </div>
         <div class="runway-item">
           <span class="label">Fixed Deposits</span>
-          <span class="value">${formatCurrency(fdValue)}</span>
+          <span class="value">${liquidity.status === 'available' ? formatCurrency(liquidity.fixedDepositsGross - liquidity.fixedDepositPenalties) : 'Unavailable'}</span>
         </div>
         <div class="runway-item">
           <span class="label">Total Liquid</span>
-          <span class="value">${formatCurrency(liquidAssets)}</span>
+          <span class="value">${liquidity.status === 'available' ? display(liquidity.accessibleValue) : 'Unavailable'}</span>
         </div>
       </div>
 
       <div class="runway-result">
         <div class="runway-months">
-          <span class="number">${runwayMonths}</span>
+          <span class="number">${runwayMonths === null ? '—' : runwayMonths}</span>
           <span class="label">Months of Emergency Fund</span>
         </div>
-        <span class="status ${runwayMonths >= 12 ? 'healthy' : runwayMonths >= 6 ? 'ok' : 'warning'}">
-          ${runwayMonths >= 12 ? '✓ Healthy' : runwayMonths >= 6 ? '⚠️ Moderate' : '✗ Low'}
+        <span class="status ${runwayMonths === null ? 'warning' : runwayMonths >= 12 ? 'healthy' : runwayMonths >= 6 ? 'ok' : 'warning'}">
+          ${runwayMonths === null ? 'Unavailable — add essential expenses and fresh valuations' : runwayMonths >= 12 ? '✓ Healthy' : runwayMonths >= 6 ? '⚠️ Moderate' : '✗ Low'}
         </span>
       </div>
     </div>
@@ -444,7 +395,10 @@ async function refreshNiftyData(context: FeatureContext = activeContext) {
     const highVal = niftyData.high52w;
     const currentVal = niftyData.level;
     const drawdown = ((highVal - currentVal) / highVal) * 100;
-    const totalNW = context.ports.calculations.totalNetWorth(D).netWorth;
+    const safety = portfolioSafetyReport(D);
+    const crash = analyzeCrashProtocol({ liquidity: safety.liquidity, currentDrawdownPercent: safety.marketDataFresh ? drawdown : null });
+    const amountLabel = (amount: number | null | undefined) => amount === null || amount === undefined ? 'Unavailable' : formatCurrency(amount);
+    const amountFor = (trigger: number) => crash.levels.find(level => level.drawdownTriggerPercent === trigger)?.amount;
 
     const crashPanel = document.getElementById('crash');
     if (crashPanel) {
@@ -458,17 +412,17 @@ async function refreshNiftyData(context: FeatureContext = activeContext) {
           </div>
           <div class="scenario">
             <span class="scenario-label">10% Crash Deploy</span>
-            <span class="scenario-value">${formatCurrency(totalNW * 0.1)}</span>
+            <span class="scenario-value">${amountLabel(amountFor(10))}</span>
             <span class="scenario-desc">Average down position</span>
           </div>
           <div class="scenario">
             <span class="scenario-label">15% Crash Deploy</span>
-            <span class="scenario-value">${formatCurrency(totalNW * 0.15)}</span>
+            <span class="scenario-value">${amountLabel(amountFor(15))}</span>
             <span class="scenario-desc">Aggressive buy</span>
           </div>
           <div class="scenario">
             <span class="scenario-label">25% Crash Deploy</span>
-            <span class="scenario-value">${formatCurrency(totalNW * 0.25)}</span>
+            <span class="scenario-value">${amountLabel(amountFor(25))}</span>
             <span class="scenario-desc">Max deployment</span>
           </div>
         `;
