@@ -192,6 +192,7 @@ export interface FireOSState {
     category: string;
     amount: number;
     linkedToSWP: boolean;
+    idempotencyKey?: string;
   }>;
 
   // Plan Tab (v3.1)
@@ -381,7 +382,7 @@ const persistedPortfolioShape = {
   watchdogRules: exactOptional(z.array(fundWatchdogRuleSchema).max(50)),
   swpSchedule: exactOptional(z.strictObject({ enabled: z.boolean(), startDate: z.string(), monthlyAmount: finiteNumberSchema, rate: finiteNumberSchema, autoExecute: z.boolean().default(false) })),
   taxCalendar: exactOptional(z.strictObject({ lastLTCGHarvestDate: z.string(), lastHarvestedAmount: finiteNumberSchema, harvestTarget: finiteNumberSchema })),
-  expenses: exactOptional(z.array(z.strictObject({ date: z.string(), category: z.string(), amount: finiteNumberSchema, linkedToSWP: z.boolean() }))),
+  expenses: exactOptional(z.array(z.strictObject({ date: z.string(), category: z.string(), amount: finiteNumberSchema, linkedToSWP: z.boolean(), idempotencyKey: z.string().optional() }))),
   netWorthHistory: exactOptional(z.array(z.strictObject({ date: z.string(), value: finiteNumberSchema }))),
   completedActions: exactOptional(z.record(z.string(), z.strictObject({ completedAt: timestampSchema }))),
   achievedMilestones: exactOptional(z.array(z.string())),

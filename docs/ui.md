@@ -188,6 +188,13 @@ and finite outputs are capped at `Number.MAX_SAFE_INTEGER`. Negative pause growt
 does not reduce the missed-contribution cost; callers continue to provide display
 rounding.
 
+SWP's **Simulate Withdrawal** action is read-only: it previews a validated plan
+and never changes holdings or expenses. **Record Withdrawal** is the explicit
+write action; it requires fresh NAVs, records only the actual reconciled amount,
+and uses an idempotency key to prevent duplicate monthly withdrawals. Automatic
+SWP execution uses the same recording path. A missing/stale valuation blocks the
+plan and reports the reason.
+
 Each holding valuation is also classified as current, stale, missing, or explicit
 zero. Missing NAVs are not coerced into zero and are excluded from numeric totals;
 the dashboard shows priced coverage and provenance. Stale last-good values remain

@@ -3,6 +3,7 @@ export interface Expense {
   category: string;
   amount: number;
   linkedToSWP: boolean;
+  idempotencyKey?: string;
 }
 
 interface ExpenseRate {

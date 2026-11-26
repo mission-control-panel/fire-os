@@ -97,6 +97,7 @@ describe('createDailyTaskRunner', () => {
     await flush();
 
     expect(deps.executeMonthlyWithdrawal).toHaveBeenCalledTimes(1);
+    expect(deps.executeMonthlyWithdrawal).toHaveBeenCalledWith(state, 'swp:2026-03', TODAY);
     expect(state.expenses).toHaveLength(1);
     expect(deps.persist).toHaveBeenCalledTimes(2);
     expect(deps.notify).toHaveBeenCalledWith('✓ Automatic monthly SWP executed', 4000, 'success');
@@ -141,6 +142,11 @@ describe('createDailyTaskRunner', () => {
     expect(consoleError).toHaveBeenCalledWith(
       '[SWP Auto] Failed to execute withdrawal:',
       expect.any(Error),
+    );
+    expect(deps.notify).toHaveBeenCalledWith(
+      '⚠ Automatic monthly SWP was not recorded; review valuation data and retry.',
+      6000,
+      'warning',
     );
     consoleError.mockRestore();
   });

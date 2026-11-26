@@ -228,10 +228,15 @@ Core formulas and their code locations:
 | Coast FIRE | Required today = target / `(1+return)^years`; coast age solves compound growth without contributions | `src/modules/calculators/scenario-modeler.ts` |
 | LTCG harvest | Estimated long-term units from SIP months older than 12; gains allocated up to the configured yearly allowance `taxCalendar.harvestTarget` (default 0) less last year's harvest. | `src/modules/calculators/tax/ltcg-planner.ts` |
 | Emergency runway | Selected liquid assets / monthly expenses; UI floors to whole months | `src/modules/calculators/index.ts`, `src/lib/calculations.ts` |
-| SWP | Monthly amount redeemed across user-owned fund buckets in `DEFAULT_FUND_BUCKETS` order; records expense and reduces units | `src/modules/calculators/swp-scheduler.ts` |
+| SWP | Pure preview plans FIFO redemption across fresh-NAV fund units; explicit recording is idempotent, records the actual amount, and reduces units only after validation | `src/modules/calculators/swp-scheduler.ts` |
 | Insurance gap | Term target = max(annual income × 10, ₹1Cr); health target ₹20L for family ≤2 else ₹50L | `src/modules/plan/action-engine.ts`, `health-status.ts` |
 | Savings rate | (annual income − profile annualExpenses × 12) / annual income; `annualExpenses` is stored monthly (legacy key name), red <15%, yellow <30% | `src/modules/plan/health-status.ts` |
 | Profile age | date-fns strict `YYYY-MM-DD` parse; age from the UTC calendar day of today with the anniversary taken in today's year; null on malformed/impossible/future DOB or years 0000–0099 | `src/types/portfolio.ts` |
+
+SWP previews never mutate holdings, expenses, or schedules. Manual recording is a
+separate explicit action; automatic monthly execution uses a month idempotency key.
+Missing or stale NAVs block a plan rather than being treated as zero, and a
+shortfall records only the reconciled amount actually redeemed.
 
 These are app calculation semantics, including simplifications and defaults;
 they do not imply external trade execution. SWP modifies simulated portfolio
