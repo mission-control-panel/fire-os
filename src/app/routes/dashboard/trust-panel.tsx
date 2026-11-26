@@ -84,23 +84,42 @@ function TrustSummary({
   staleCount,
   completeness,
   market,
+  valuationNeedsAttention,
+  sync,
+  scope,
 }: {
   staleCount: number;
   completeness: number;
   market: MarketRefreshStatus;
+  valuationNeedsAttention: boolean;
+  sync: SyncStatus;
+  scope: ActiveScopeStatus;
 }) {
+  const syncNeedsAttention = scope === 'cloud' && sync !== 'idle';
   const summary = staleCount > 0
     ? {
         title: 'Refresh needed',
         detail: 'Some valuations are stale, so totals may change after refresh.',
         className: 'border-(--color-warning) bg-(--color-surface-raised)',
       }
-    : market === 'error'
+    : valuationNeedsAttention
       ? {
-          title: 'Market data unavailable',
-          detail: 'Portfolio values remain available, but benchmark data could not be refreshed.',
+          title: 'Valuation coverage incomplete',
+          detail: 'Some holdings have missing or zero valuations, so totals may be understated.',
           className: 'border-(--color-warning) bg-(--color-surface-raised)',
         }
+    : market === 'error'
+      ? {
+          title: 'Market refresh failed',
+          detail: 'A market refresh failed; review valuation coverage before relying on totals.',
+          className: 'border-(--color-warning) bg-(--color-surface-raised)',
+        }
+      : syncNeedsAttention
+        ? {
+            title: 'Sync needs attention',
+            detail: sync === 'offline' ? 'Cloud sync is offline; local changes remain on this device.' : `Cloud sync status: ${SYNC_STATUS_LABELS[sync]}.`,
+            className: 'border-(--color-warning) bg-(--color-surface-raised)',
+          }
       : completeness < 100
         ? {
             title: 'Complete your profile',
@@ -145,6 +164,8 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
   const staleLabels = staleSourceLabels(state);
   const staleCount = staleLabels.length;
   const completeness = profileCompletenessPercent(state);
+  const valuation = totalNetWorth(state).valuation;
+  const valuationNeedsAttention = valuation.hasUnknownValues || valuation.sources.some((source) => source.status === 'zero');
   const savedLabel = state._lastSavedAt
     ? `Last saved ${new Date(state._lastSavedAt).toLocaleString()}`
     : 'Not saved yet';
@@ -161,7 +182,14 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
     <section aria-label="Data quality and sync status">
       <Card className="flex flex-col gap-2">
         <CardTitle>Data quality</CardTitle>
-        <TrustSummary staleCount={staleCount} completeness={completeness} market={market} />
+        <TrustSummary
+          staleCount={staleCount}
+          completeness={completeness}
+          market={market}
+          valuationNeedsAttention={valuationNeedsAttention}
+          sync={sync}
+          scope={scope}
+        />
         <TrustRow label="Quality">
           {staleCount === 0 ? 'Current' : `${staleCount} stale source${staleCount === 1 ? '' : 's'}`}
         </TrustRow>
