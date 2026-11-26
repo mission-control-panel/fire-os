@@ -28,7 +28,7 @@ describe('tax lot engine', () => {
         id: 'lot-1', fundKey: 'fund', fundName: 'Fund', assetClass: 'equity-mutual-fund',
         acquiredDate: '2024-01-01', units: 100, costBasis: 100_000, currentNAV: 1_500, dataQuality: 'exact',
       }],
-      realizedDisposals: [{ lotId: 'lot-1', saleDate: '2025-05-01', units: 20, salePrice: 900 }],
+      realizedDisposals: [{ lotId: 'lot-1', saleDate: '2026-04-01', units: 20, salePrice: 900 }],
     });
 
     expect(plan.status).toBe('available');

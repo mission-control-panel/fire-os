@@ -154,7 +154,7 @@ export function calculateTaxLotPlan(input: {
     : null;
   const realized = (input.realizedDisposals ?? []).reduce((totals, disposal) => {
     const lot = [...input.lots, ...(input.realizedLots ?? [])].find(candidate => candidate.id === disposal.lotId);
-    if (!lot || !isValid(parseISO(disposal.saleDate)) || !finiteNonNegative(disposal.units) || disposal.units <= 0 || disposal.units > lot.units || !finiteNonNegative(disposal.salePrice) || (disposal.fees !== undefined && !finiteNonNegative(disposal.fees))) return totals;
+    if (!lot || !isValid(parseISO(disposal.saleDate)) || financialYearFor(disposal.saleDate) !== financialYear || !finiteNonNegative(disposal.units) || disposal.units <= 0 || disposal.units > lot.units || !finiteNonNegative(disposal.salePrice) || (disposal.fees !== undefined && !finiteNonNegative(disposal.fees))) return totals;
     const gain = disposal.units * disposal.salePrice - lot.costBasis * (disposal.units / lot.units) - (disposal.fees ?? 0);
     const longTerm = isLongTermOnDate(lot.acquiredDate, parseISO(disposal.saleDate), disposal.assetClass ?? lot.assetClass, rules) === true;
     if (gain >= 0) totals.gains += gain;
