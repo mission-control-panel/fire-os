@@ -136,6 +136,10 @@ function validWatchdogRules(value) {
         && isBoundedList(value.vestingSchedule, 200);
     }
 
+    function validTransactionLedger(value) {
+      return value is map && value.size() <= 7;
+    }
+
     function validMfEntry(value) {
       return value is map
         && value.keys().hasOnly(['name', 'schemeCode', 'units', 'startDate', 'monthlyAmount', 'costBasis', 'bucketId'])
@@ -190,10 +194,10 @@ function validWatchdogRules(value) {
           'profile', 'sip', 'fd', 'epf', 'esop', 'bonds', 'otherHoldings', 'liabilities', 'demat',
           'nav', 'niftyHigh', 'niftyData', 'currencyRates', 'eurInr', 'eurInrData',
           'alphaTrackerData', 'goals', 'fundBuckets', 'watchdogRules', 'swpSchedule', 'taxCalendar',
-          'expenses', 'netWorthHistory', 'completedActions', 'achievedMilestones',
+          'expenses', 'transactionLedger', 'netWorthHistory', 'completedActions', 'achievedMilestones',
           'insurance', 'esopDetails', 'liquidationRules', 'assistant'
         ])
-        && data.size() <= 41
+        && data.size() <= 42
         && (!('profile' in data) || data.profile is map)
         && (!('mf' in data) || isBoundedMap(data.mf, 200))
         && (!('currencyRates' in data) || isBoundedMap(data.currencyRates, 200))
@@ -205,6 +209,7 @@ function validWatchdogRules(value) {
         && (!('liquidationRules' in data) || isBoundedList(data.liquidationRules, 50))
         && (!('achievedMilestones' in data) || isBoundedList(data.achievedMilestones, 500))
         && (!('insurance' in data) || data.insurance is map)
+        && (!('transactionLedger' in data) || validTransactionLedger(data.transactionLedger))
         && (!('esopDetails' in data) || validEsopDetails(data.esopDetails));
     }
 

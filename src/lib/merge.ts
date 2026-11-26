@@ -19,7 +19,7 @@ const SECTION_FIELDS: Record<PortfolioSection, Array<keyof PersistedPortfolioDat
     'goals',
     'fundBuckets',
     'watchdogRules', 'swpSchedule', 'taxCalendar', 'expenses',
-    'netWorthHistory', 'completedActions', 'achievedMilestones',
+    'netWorthHistory', 'completedActions', 'achievedMilestones', 'transactionLedger',
   ],
   insurance: ['insurance'],
   esop: ['esopDetails', 'liquidationRules'],

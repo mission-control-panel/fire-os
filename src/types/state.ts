@@ -8,6 +8,7 @@ import type { CurrencyRateCacheMap, CurrencyRateData, HistoricalSeries, NiftyDat
 import type { SyncMetadata, FirebaseUser } from './firebase';
 import { migratePersistedData } from '../lib/portfolioMigrations';
 import { DEFAULT_FUND_BUCKETS } from '../lib/fundMatcher';
+import { createTransactionLedger, type TransactionLedger } from '../lib/transaction-ledger';
 import { z } from 'zod';
 
 // Firebase User type - Firebase authenticated user or null
@@ -194,6 +195,8 @@ export interface FireOSState {
     linkedToSWP: boolean;
     idempotencyKey?: string;
   }>;
+  /** Versioned append-only transaction ledger; legacy portfolios start empty. */
+  transactionLedger: TransactionLedger;
 
   // Plan Tab (v3.1)
   netWorthHistory: Array<{ date: string; value: number }>;
@@ -272,11 +275,13 @@ export const PERSISTED_STATE_KEYS = [
   'niftyHigh', 'niftyData', 'currencyRates', 'marketHistory', 'eurInr', 'eurInrData', 'alphaTrackerData',
   'goals',
   'fundBuckets',
-  'watchdogRules', 'swpSchedule', 'taxCalendar', 'expenses', 'netWorthHistory',
+  'watchdogRules', 'swpSchedule', 'taxCalendar', 'expenses', 'transactionLedger', 'netWorthHistory',
   'completedActions', 'achievedMilestones', 'insurance', 'esopDetails', 'liquidationRules', 'assistant',
 ] as const;
 
 const finiteNumberSchema = z.number();
+const safeIntegerSchema = z.number().refine(Number.isSafeInteger, { message: 'Expected a safe integer.' });
+const ledgerDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => Number.isFinite(Date.parse(`${value}T00:00:00Z`)));
 const timestampSchema = z.string().refine((value) => Number.isFinite(Date.parse(value)));
 const statusSchema = z.enum(['live', 'cache-fresh', 'stale', 'manual']);
 const legacyNiftyStatusSchema = z.enum(['live', 'cache-fresh', 'manual']);
@@ -383,6 +388,24 @@ const persistedPortfolioShape = {
   swpSchedule: exactOptional(z.strictObject({ enabled: z.boolean(), startDate: z.string(), monthlyAmount: finiteNumberSchema, rate: finiteNumberSchema, autoExecute: z.boolean().default(false) })),
   taxCalendar: exactOptional(z.strictObject({ lastLTCGHarvestDate: z.string(), lastHarvestedAmount: finiteNumberSchema, harvestTarget: finiteNumberSchema })),
   expenses: exactOptional(z.array(z.strictObject({ date: z.string(), category: z.string(), amount: finiteNumberSchema, linkedToSWP: z.boolean(), idempotencyKey: z.string().optional() }))),
+  transactionLedger: exactOptional(z.strictObject({
+    schemaVersion: z.literal(1), revision: z.number().int().nonnegative(),
+    accounts: z.record(z.string().max(100), z.strictObject({ id: z.string().max(100), name: z.string().max(200), currency: z.string().max(10) })),
+    instruments: z.record(z.string().max(100), z.strictObject({ id: z.string().max(100), name: z.string().max(200), assetClass: z.string().max(50), currency: z.string().max(10) })),
+    transactions: z.array(z.strictObject({
+      id: z.string().max(150), dedupKey: z.string().max(500), date: ledgerDateSchema,
+      type: z.enum(['purchase', 'sale', 'transfer_in', 'transfer_out', 'dividend', 'interest', 'fee', 'split', 'opening_balance']),
+      accountId: z.string().max(100), instrumentId: z.string().max(100).optional(), linkedTransactionId: z.string().max(150).optional(),
+      amountPaise: safeIntegerSchema.nonnegative(), quantityMicros: safeIntegerSchema.nonnegative().optional(),
+      costProvenance: z.enum(['exact', 'estimated', 'unknown']), note: z.string().max(1000).optional(),
+      splitRatioNumerator: safeIntegerSchema.positive().optional(), splitRatioDenominator: safeIntegerSchema.positive().optional(),
+    })).max(10_000),
+    lots: z.array(z.strictObject({
+      id: z.string().max(150), transactionId: z.string().max(150), accountId: z.string().max(100), instrumentId: z.string().max(100), acquiredDate: ledgerDateSchema,
+      quantityMicros: safeIntegerSchema.nonnegative(), costPaise: safeIntegerSchema.nonnegative(), costProvenance: z.enum(['exact', 'estimated', 'unknown']),
+    })).max(10_000),
+    liabilities: z.array(z.strictObject({ id: z.string().max(100), name: z.string().max(200), balancePaise: safeIntegerSchema.nonnegative(), currency: z.string().max(10) })).max(50),
+  })),
   netWorthHistory: exactOptional(z.array(z.strictObject({ date: z.string(), value: finiteNumberSchema }))),
   completedActions: exactOptional(z.record(z.string(), z.strictObject({ completedAt: timestampSchema }))),
   achievedMilestones: exactOptional(z.array(z.string())),
@@ -535,6 +558,7 @@ export function initializeState(): FireOSState {
       harvestTarget: 0,
     },
     expenses: [],
+    transactionLedger: createTransactionLedger(),
 
     // Plan Tab (v3.1)
     netWorthHistory: [],
@@ -675,6 +699,7 @@ export function mergeState(existing: FireOSState, incoming: Partial<FireOSState>
     ...(incoming.swpSchedule && { swpSchedule: { ...existing.swpSchedule, ...incoming.swpSchedule } }),
     ...(incoming.taxCalendar && { taxCalendar: { ...existing.taxCalendar, ...incoming.taxCalendar } }),
     ...(incoming.expenses && { expenses: incoming.expenses }),
+    ...(incoming.transactionLedger && { transactionLedger: incoming.transactionLedger }),
     // Plan Tab fields
     ...(incoming.netWorthHistory && { 
       netWorthHistory: [

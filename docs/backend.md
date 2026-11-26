@@ -301,6 +301,15 @@ preserved. Removed-key tombstones are not represented in this algorithm; absent
 entry timestamp handling therefore cannot model deletion against a stale copy
 as robustly as an explicit tombstone protocol.
 
+The versioned transaction ledger (`transactionLedger`) is an optional persisted
+section. `src/lib/transaction-ledger.ts` provides pure reconciliation,
+paise/micro-unit validation, import preview with row errors and deterministic
+duplicate keys, explicit merge/replace application, and rollback snapshots.
+Malformed imports are rejected before application. The ledger does not infer
+purchase lots from current holdings or CAS balances; unknown cost provenance
+stays explicit. It is included in the existing allowlisted Firestore envelope
+under the planning section and remains bounded to protect document-size limits.
+
 `mergeState()` is a separate shallow in-memory merger retained for state-shaped
 updates. It merges holdings/maps by key, deeply merges watchdog/insurance/ESOP
 nested sections, replaces expenses, merges history by date, unions achieved

@@ -59,6 +59,16 @@ describe('portfolio Firestore rules', () => {
     }));
   });
 
+  it('allows a bounded versioned transaction ledger in the envelope', async () => {
+    const db = testEnvironment.authenticatedContext('ledger-owner').firestore();
+    const envelope = buildEnvelopeFromState(initializeState(), {}, '2026-01-01T00:00:00.000Z');
+    const { mf: _mf, ...stateData } = envelope.data;
+    const { entryUpdatedAt: _entryUpdatedAt, ...withoutDynamicMetadata } = envelope;
+    void _mf;
+    void _entryUpdatedAt;
+    await assertSucceeds(setDoc(doc(db, 'users/ledger-owner/portfolio/state'), { ...withoutDynamicMetadata, data: stateData }));
+  });
+
   it('denies another user access to the portfolio', async () => {
     const ownerDb = testEnvironment.authenticatedContext('owner-2').firestore();
     await assertSucceeds(setDoc(doc(ownerDb, 'users/owner-2/portfolio/state'), validEnvelope));

@@ -137,6 +137,14 @@ already use the `goals`/`liquidationRules` shape pass through untouched. `mergeS
 sections, unions milestones and `goals`/`liquidationRules` by id, deduplicates
 history dates, and keeps metadata explicit.
 
+The optional `transactionLedger` section is a versioned, bounded append-only
+contract from `src/lib/transaction-ledger.ts`. It stores money as integer paise
+and quantities as integer micro-units, keeps cost provenance explicit, and is
+validated with the persisted schema. Import is preview-first with deterministic
+deduplication and explicit merge/replace application; each application returns
+a rollback snapshot. Current SWP/expense records remain a separate legacy
+user-facing section until a deliberate migration maps them to ledger events.
+
 Storage keys are `fireOS_v2:anonymous` and `fireOS_v2:user:{uid}`; legacy
 `fireOS_v2` is copied to the anonymous scope on first read. `saveData()` refuses
 to write outside the selected identity scope, strips runtime fields and invalid
