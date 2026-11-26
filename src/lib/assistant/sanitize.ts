@@ -11,6 +11,7 @@ import type { FireOSState } from '../../types/state';
 import type { NiftyData } from '../../types/api';
 import { totalNetWorth } from '../../modules/dashboard/kpis';
 import { projectDefaultRetirement } from '../../modules/retirement/retirement-engine';
+import { portfolioSafetyReport } from '../../modules/financial-safety/safety-engine';
 
 export type BalanceRange = '<1L' | '1–5L' | '5–25L' | '25L–1Cr' | '1Cr+';
 
@@ -59,6 +60,14 @@ export interface SanitizedContext {
     fireEligibleCorpusRange: BalanceRange;
     requiredCorpusRange: BalanceRange | 'unavailable';
     shortfallRange: BalanceRange | 'unavailable';
+  };
+  /** Shared read-only liquidity, crash and allocation safety results. */
+  safety: {
+    liquidityStatus: 'available' | 'insufficient-data' | 'unavailable';
+    runway: '<6 months' | '6–12 months' | '12+ months' | 'unavailable';
+    accessibleValueRange: BalanceRange | 'unavailable';
+    crashStatus: 'available' | 'insufficient-data' | 'unavailable';
+    driftActions: number | 'unavailable';
   };
   /** Public Nifty 50 market data; null when no valid cached value exists */
   nifty50: NiftyContext | null;
@@ -164,6 +173,14 @@ export function buildContextSummary(
     taxRate: Math.min(0.99, Math.max(0, (profile.taxSlabRate ?? 0) / 100)),
     dataComplete: !valuation.hasUnknownValues,
   });
+  const safety = portfolioSafetyReport(state);
+  const runway = safety.liquidity.runwayMonths === null
+    ? 'unavailable'
+    : safety.liquidity.runwayMonths < 6
+      ? '<6 months'
+      : safety.liquidity.runwayMonths < 12
+        ? '6–12 months'
+        : '12+ months';
 
   const context: SanitizedContext = {
     userLabel: 'User',
@@ -188,6 +205,17 @@ export function buildContextSummary(
       shortfallRange: retirementProjection.shortfallAtRetirement === null
         ? 'unavailable'
         : bucketBalance(retirementProjection.shortfallAtRetirement),
+    },
+    safety: {
+      liquidityStatus: safety.liquidity.status,
+      runway,
+      accessibleValueRange: safety.liquidity.accessibleValue === null
+        ? 'unavailable'
+        : bucketBalance(safety.liquidity.accessibleValue),
+      crashStatus: safety.crash.status,
+      driftActions: safety.allocation.status === 'available'
+        ? safety.allocation.recommendations.length
+        : 'unavailable',
     },
     nifty50: sanitizeNiftyData(state.niftyData, now),
     profileMasked: {

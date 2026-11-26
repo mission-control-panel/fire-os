@@ -3,6 +3,7 @@ import { formatCurrency, formatPercentage } from '../../../lib/formatters';
 import { calculateGoalProgress } from '../../../modules/dashboard/goal-tracker';
 import { fiProgress, floatIndicator, sipStatus, totalNetWorth } from '../../../modules/dashboard/kpis';
 import { projectDefaultRetirement } from '../../../modules/retirement/retirement-engine';
+import { portfolioSafetyReport } from '../../../modules/financial-safety/safety-engine';
 import type { FireOSState, Goal } from '../../../types/state';
 
 const TONE_CLASS = {
@@ -127,6 +128,28 @@ export function RetirementReadinessCard({ state }: { state: FireOSState }) {
       <p className="text-lg font-bold text-(--color-foreground)">{label}</p>
       <p className="text-xs text-(--color-muted-foreground)">{detail}</p>
       <p className="text-xs text-(--color-muted-foreground)">Estimate only • 10% return, 6% inflation, 4% withdrawal</p>
+    </Card>
+  );
+}
+
+/** Shared emergency-liquidity and allocation-drift result, kept read-only. */
+export function SafetyReadinessCard({ state }: { state: FireOSState }) {
+  const report = portfolioSafetyReport(state);
+  const runway = report.liquidity.runwayMonths === null
+    ? 'Unavailable'
+    : `${Math.floor(report.liquidity.runwayMonths)} months`;
+  const crash = report.crash.status === 'available'
+    ? `Crash fund ${formatCurrency(report.crash.crashFund ?? 0, 0)}`
+    : 'Crash deployment unavailable';
+  const drift = report.allocation.status === 'available'
+    ? report.allocation.recommendations.length > 0 ? `${report.allocation.recommendations.length} drift action(s)` : 'Within target bands'
+    : 'Allocation data incomplete';
+  return (
+    <Card className="flex flex-col gap-1">
+      <p className="text-xs font-semibold tracking-wide text-(--color-muted-foreground) uppercase">Safety runway</p>
+      <p className="text-lg font-bold text-(--color-foreground)">{runway}</p>
+      <p className="text-xs text-(--color-muted-foreground)">{crash} • {drift}</p>
+      <p className="text-xs text-(--color-muted-foreground)">Preserves a 12-month reserve; recommendations only.</p>
     </Card>
   );
 }

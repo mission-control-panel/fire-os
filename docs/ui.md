@@ -696,6 +696,16 @@ cover the withdrawal. A manual simulator awaits cloud persistence.
   data; UI bar caps at 100). Remaining target can be negative. It does not
   project SIP future value.
 - **Watchdog:** generic fund thresholds based on user-owned `fundBuckets`; a configured limit per bucket produces alerts; thresholds are controlled via `watchdogRules`. It returns text guidance only; it does not alter investments or fetch manager status/AUM itself.
+- **Safety runway and crash protocol:** the Calculator, Dashboard safety card,
+  crash alert and Assistant share `portfolioSafetyReport()`. Current cash,
+  liquid funds, FD proceeds after any configured penalty, and restricted/illiquid
+  balances are shown separately. Essential expenses are the stored monthly
+  `profile.annualExpenses` value; missing expenses or stale/missing valuations
+  show `Unavailable` rather than zero. The default crash protocol preserves 12
+  months of essential expenses and caps cumulative deployment; each level is a
+  read-only recommendation and cannot record a transaction. Allocation drift is
+  calculated against the user-owned fund-bucket targets and is suppressed when
+  valuation coverage is incomplete.
 - **Expense tracker:** adds/display persisted expenses from dashboard modal.
       Metric named monthlyAverage is rounded totalAmount / expense-record count, not
       grouped by month/date; `_startDate` is unused. It is data-only — the former

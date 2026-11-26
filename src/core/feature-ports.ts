@@ -10,6 +10,7 @@ import {
 import { fetchCurrencyToInr, fetchEsopValuations, fetchStockQuote } from '../modules/api/esop';
 import { totalNetWorth, sipStatus, fiProgress, floatIndicator, portfolioComposition, attributeNetWorthChange, esopConcentration } from '../modules/dashboard/kpis';
 import { calculateAllocationDrift } from '../modules/calculators/portfolio-rebalancing';
+import { analyzeLiquidity, analyzeCrashProtocol, analyzeAllocationDrift, portfolioSafetyReport } from '../modules/financial-safety/safety-engine';
 import { calculateFIAge, calculateCoastFire } from '../modules/calculators/scenario-modeler';
 import { projectDefaultRetirement, projectRetirement, retirementAssetsFromValues, summarizeRetirementCorpus } from '../modules/retirement/retirement-engine';
 import { renderCashflowSummary } from '../modules/plan/cashflow-summary';
@@ -36,6 +37,10 @@ export {
   summarizeRetirementCorpus,
   retirementAssetsFromValues,
   checkWatchdogRules,
+  analyzeLiquidity,
+  analyzeCrashProtocol,
+  analyzeAllocationDrift,
+  portfolioSafetyReport,
 };
 
 export interface FeatureUiPort {
@@ -59,6 +64,10 @@ export interface FeatureCalculationPort {
   projectDefaultRetirement?: typeof projectDefaultRetirement;
   summarizeRetirementCorpus?: typeof summarizeRetirementCorpus;
   retirementAssetsFromValues?: typeof retirementAssetsFromValues;
+  analyzeLiquidity?: typeof analyzeLiquidity;
+  analyzeCrashProtocol?: typeof analyzeCrashProtocol;
+  analyzeAllocationDrift?: typeof analyzeAllocationDrift;
+  portfolioSafetyReport?: typeof portfolioSafetyReport;
 }
 
 export interface FeatureWidgetPort {
@@ -148,6 +157,10 @@ export function createFeaturePorts(): FeaturePorts {
       projectDefaultRetirement,
       summarizeRetirementCorpus,
       retirementAssetsFromValues,
+      analyzeLiquidity,
+      analyzeCrashProtocol,
+      analyzeAllocationDrift,
+      portfolioSafetyReport,
     },
     widgets: {
       renderCashflowSummary,

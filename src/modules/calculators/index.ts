@@ -9,7 +9,8 @@ import './styles.css';
 import { initTaxModule } from './tax';
 import { calculateMonthlyWithdrawal, recordMonthlyWithdrawal, DEFAULT_FUND_BUCKETS } from './swp-scheduler';
 import { compareFIScenarios, type FIScenarioInput, type FIScenarioResult } from './scenario-modeler';
-import { emergencyRunway, sipPauseImpact } from '../../lib/calculations';
+import { sipPauseImpact } from '../../lib/calculations';
+import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 
 let activeContext = createFeatureContext();
 let D = activeContext.state;
@@ -99,6 +100,8 @@ export function renderCalculators(container: HTMLElement, context: FeatureContex
 }
 
 function renderCrashProtocol(): string {
+  const safety = portfolioSafetyReport(D);
+  const crashLevels = safety.crash.levels;
   // Build portfolio dropdown options: bonds, SIP, MF, other holdings, demat
   const options: { label: string; value: number }[] = [];
   for (const [key, bond] of Object.entries(D.bonds || {})) {
@@ -122,13 +125,12 @@ function renderCrashProtocol(): string {
     if (value > 0) options.push({ label: `Demat: ${demat.name || key} (₹${value.toLocaleString('en-IN')})`, value });
   }
 
-  const totalBonds = Object.values(D.bonds || {}).reduce((sum, b) => sum + b.amount, 0);
-  const defaultCrashFund = totalBonds;
-
-  // Amounts to deploy based on the crash fund
-  const deploy10 = defaultCrashFund * 0.10;
-  const deploy15 = defaultCrashFund * 0.15;
-  const deploy25 = defaultCrashFund * 0.25;
+  const levelAmount = (trigger: number) => crashLevels.find(level => level.drawdownTriggerPercent === trigger)?.amount;
+  const deploy10 = levelAmount(10);
+  const deploy15 = levelAmount(15);
+  const deploy25 = levelAmount(25);
+  const defaultCrashFund = safety.crash.crashFund ?? 0;
+  const amountLabel = (amount: number | null | undefined) => amount === null || amount === undefined ? 'Unavailable' : formatCurrency(amount);
 
   return `
     <div class="calc-card">
@@ -147,17 +149,17 @@ function renderCrashProtocol(): string {
       <div class="crash-scenarios">
         <div class="scenario">
           <span class="scenario-label">10% Crash</span>
-          <span class="scenario-value">${formatCurrency(deploy10)}</span>
+          <span class="scenario-value">${amountLabel(deploy10)}</span>
           <span class="scenario-desc">Invest to average down</span>
         </div>
         <div class="scenario">
           <span class="scenario-label">15% Crash</span>
-          <span class="scenario-value">${formatCurrency(deploy15)}</span>
+          <span class="scenario-value">${amountLabel(deploy15)}</span>
           <span class="scenario-desc">Aggressive buy</span>
         </div>
         <div class="scenario">
           <span class="scenario-label">25% Crash</span>
-          <span class="scenario-value">${formatCurrency(deploy25)}</span>
+          <span class="scenario-value">${amountLabel(deploy25)}</span>
           <span class="scenario-desc">Max deployment</span>
         </div>
       </div>
@@ -170,23 +172,19 @@ function renderCrashProtocol(): string {
         <label>Current Nifty Level (₹)</label>
         <input type="number" id="nifty-current" value="${D.niftyData?.level || ''}">
       </div>
-      <p id="nifty-status" class="calc-info">${D.niftyData ? `${D.niftyData.status ?? 'legacy'} data from ${D.niftyData.source}. Updated: ${new Date(D.niftyData.timestamp).toLocaleString()}` : 'Live Nifty data unavailable. Enter both values manually before interpreting drawdown.'}</p>
+      <p id="nifty-status" class="calc-info">${D.niftyData ? `${D.niftyData.status ?? 'legacy'} data from ${D.niftyData.source}. Updated: ${new Date(D.niftyData.timestamp).toLocaleString()}` : 'Live Nifty data unavailable. Enter both values manually before interpreting drawdown.'} ${safety.crash.status === 'available' ? `Reserve ${formatCurrency(safety.crash.reserveAmount ?? 0)} preserved.` : 'Reserve and deployment are unavailable until expenses and fresh valuations are known.'}</p>
       <button id="refresh-nifty-btn" class="btn-primary">⚡ Refresh Nifty</button>
     </div>
   `;
 }
 
 function renderEmergencyRunway(): string {
-  const monthlyExpenses = D.profile.annualExpenses || 0;
-  const annualExpenses = monthlyExpenses * 12;
-
-  const mfValue = Object.values(D.sip)
-    .reduce((sum, sip) => sum + (sip.units * (sip.schemeCode ? D.nav[sip.schemeCode]?.nav || 0 : 0)), 0);
-  const fdValue = D.fd.fd?.amount || 0;
-  const buffer = 0; // From profile if added
-
-  const liquidAssets = mfValue + fdValue + buffer;
-  const runwayMonths = Math.floor(emergencyRunway(liquidAssets, monthlyExpenses));
+  const safety = portfolioSafetyReport(D);
+  const liquidity = safety.liquidity;
+  const monthlyExpenses = liquidity.monthlyEssentialExpenses;
+  const annualExpenses = monthlyExpenses === null ? 0 : monthlyExpenses * 12;
+  const runwayMonths = liquidity.runwayMonths === null ? null : Math.floor(liquidity.runwayMonths);
+  const display = (value: number | null) => value === null ? 'Unavailable' : formatCurrency(value);
 
   return `
     <div class="calc-card">
@@ -196,30 +194,30 @@ function renderEmergencyRunway(): string {
       <div class="runway-breakdown">
         <div class="runway-item">
           <span class="label">Monthly Expenses</span>
-          <span class="value">${formatCurrency(monthlyExpenses)}</span>
-          <span class="sub">Annual: ${formatCurrency(annualExpenses)}</span>
+          <span class="value">${display(monthlyExpenses)}</span>
+          <span class="sub">Annual: ${monthlyExpenses === null ? 'Unavailable' : formatCurrency(annualExpenses)}</span>
         </div>
         <div class="runway-item">
           <span class="label">Mutual Funds</span>
-          <span class="value">${formatCurrency(mfValue)}</span>
+          <span class="value">${formatCurrency(liquidity.liquidFunds)}</span>
         </div>
         <div class="runway-item">
           <span class="label">Fixed Deposits</span>
-          <span class="value">${formatCurrency(fdValue)}</span>
+          <span class="value">${formatCurrency(liquidity.fixedDepositsGross - liquidity.fixedDepositPenalties)}</span>
         </div>
         <div class="runway-item">
           <span class="label">Total Liquid</span>
-          <span class="value">${formatCurrency(liquidAssets)}</span>
+          <span class="value">${display(liquidity.accessibleValue)}</span>
         </div>
       </div>
 
       <div class="runway-result">
         <div class="runway-months">
-          <span class="number">${runwayMonths}</span>
+          <span class="number">${runwayMonths === null ? '—' : runwayMonths}</span>
           <span class="label">Months of Emergency Fund</span>
         </div>
-        <span class="status ${runwayMonths >= 12 ? 'healthy' : runwayMonths >= 6 ? 'ok' : 'warning'}">
-          ${runwayMonths >= 12 ? '✓ Healthy' : runwayMonths >= 6 ? '⚠️ Moderate' : '✗ Low'}
+        <span class="status ${runwayMonths === null ? 'warning' : runwayMonths >= 12 ? 'healthy' : runwayMonths >= 6 ? 'ok' : 'warning'}">
+          ${runwayMonths === null ? 'Unavailable — add essential expenses and fresh valuations' : runwayMonths >= 12 ? '✓ Healthy' : runwayMonths >= 6 ? '⚠️ Moderate' : '✗ Low'}
         </span>
       </div>
     </div>
