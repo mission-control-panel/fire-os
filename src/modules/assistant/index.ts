@@ -67,6 +67,7 @@ let pendingProposal: {
   proposedChanges: Record<string, unknown>;
   context: SanitizedContext;
   fingerprint: string;
+  scope: string;
 } | null = null;
 const MAX_CONVERSATION_MESSAGES = 12;
 
@@ -294,7 +295,7 @@ async function handleDeepChatRequest(
 
     const reply = data.reply || 'No reply received.';
     pendingProposal = data.proposedChanges
-      ? { question, proposedChanges: data.proposedChanges, context: contextSummary, fingerprint: proposalStateFingerprint(activeContext.state) }
+      ? { question, proposedChanges: data.proposedChanges, context: contextSummary, fingerprint: proposalStateFingerprint(activeContext.state), scope: getScope() }
       : null;
     signals.onResponse({ text: reply });
   } catch (err) {
@@ -425,7 +426,7 @@ function renderAssumptions(context: SanitizedContext): HTMLElement {
 
 function renderProposalCard(
   messages: HTMLElement,
-  proposal: { question: string; proposedChanges: Record<string, unknown>; context: SanitizedContext; fingerprint: string }
+  proposal: { question: string; proposedChanges: Record<string, unknown>; context: SanitizedContext; fingerprint: string; scope: string }
 ): void {
   if (!activeContext) return;
   const { question, proposedChanges, context } = proposal;
@@ -557,10 +558,10 @@ function renderProposalCard(
           refreshAuditSection();
           return;
         }
-        void commitProposal(card, messages, question, proposedChanges, diff, cloudSave, proposal.fingerprint);
+        void commitProposal(card, messages, question, proposedChanges, diff, cloudSave, proposal.fingerprint, proposal.scope);
       });
     } else {
-      void commitProposal(card, messages, question, proposedChanges, diff, cloudSave, proposal.fingerprint);
+      void commitProposal(card, messages, question, proposedChanges, diff, cloudSave, proposal.fingerprint, proposal.scope);
     }
   });
 
@@ -674,12 +675,13 @@ async function commitProposal(
   proposedChanges: Record<string, unknown>,
   diff: ProposalDiffEntry[],
   cloudSave: boolean,
-  expectedFingerprint: string
+  expectedFingerprint: string,
+  expectedScope: string
 ): Promise<void> {
   if (!activeContext) return;
   const state = activeContext.state;
 
-  if (proposalStateFingerprint(state) !== expectedFingerprint) {
+  if (getScope() !== expectedScope || proposalStateFingerprint(state) !== expectedFingerprint) {
     appendAssistantAction(getScope(), {
       question: question.slice(0, 200),
       diff,

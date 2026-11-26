@@ -132,4 +132,12 @@ describe('buildCandidate / computeDiff / applyValidatedProposal', () => {
     expect(result.candidate.completedActions.one.completedAt).toBe('2026-02-01T00:00:00.000Z');
     expect(result.diff).toContainEqual({ path: 'completedActions.one.completedAt', before: '2026-01-01T00:00:00.000Z', after: '2026-02-01T00:00:00.000Z' });
   });
+
+  it('preserves nested siblings during the actual in-place apply', () => {
+    const state = initializeState();
+    state.completedActions = { one: { completedAt: '2026-01-01T00:00:00.000Z' } };
+    applyValidatedProposal(state, { completedActions: { one: { completedAt: '2026-02-01T00:00:00.000Z' }, two: { completedAt: '2026-03-01T00:00:00.000Z' } } });
+    expect(state.completedActions.one.completedAt).toBe('2026-02-01T00:00:00.000Z');
+    expect(state.completedActions.two.completedAt).toBe('2026-03-01T00:00:00.000Z');
+  });
 });

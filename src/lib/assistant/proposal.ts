@@ -220,10 +220,6 @@ export function applyValidatedProposal(
   const stateRec = state as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(proposal)) {
     const currentSection = stateRec[key];
-    if (isPlainObject(value) && isPlainObject(currentSection)) {
-      stateRec[key] = { ...currentSection, ...value };
-    } else {
-      stateRec[key] = deepClone(value);
-    }
+    stateRec[key] = mergePlainObjects(currentSection, value);
   }
 }
