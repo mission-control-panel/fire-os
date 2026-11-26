@@ -191,18 +191,26 @@ export function classifyProposal(
         reasons.push(`Removes ${removed.length} entr${removed.length === 1 ? 'y' : 'ies'} from "${key}"`);
       }
     }
-    if (isPlainObject(value)) {
-      const currentSection = isPlainObject(currentRec[key]) ? currentRec[key] : {};
-      const visit = (path: string, before: unknown, after: unknown): void => {
-        if (typeof after === 'number') {
-          const delta = typeof before === 'number' ? Math.abs(after - before) : Math.abs(after);
-          if (delta >= HIGH_VALUE_THRESHOLD) reasons.push(`Large value change at "${path}" (Δ ₹${Math.round(delta).toLocaleString('en-IN')})`);
-          return;
+    const visit = (path: string, before: unknown, after: unknown): void => {
+      if (typeof after === 'number') {
+        const delta = typeof before === 'number' ? Math.abs(after - before) : Math.abs(after);
+        if (delta >= HIGH_VALUE_THRESHOLD) reasons.push(`Large value change at "${path}" (Δ ₹${Math.round(delta).toLocaleString('en-IN')})`);
+        return;
+      }
+      if (isPlainObject(after)) {
+        for (const [nested, nestedValue] of Object.entries(after)) {
+          visit(`${path}.${nested}`, isPlainObject(before) ? before[nested] : undefined, nestedValue);
         }
-        if (isPlainObject(after)) for (const [nested, nestedValue] of Object.entries(after)) visit(`${path}.${nested}`, isPlainObject(before) ? before[nested] : undefined, nestedValue);
-      };
-      visit(key, currentSection, value);
-    } else if (Array.isArray(value) && Array.isArray(currentRec[key])) {
+        return;
+      }
+      if (Array.isArray(after)) {
+        for (let index = 0; index < after.length; index += 1) {
+          visit(`${path}[${index}]`, Array.isArray(before) ? before[index] : undefined, after[index]);
+        }
+      }
+    };
+    visit(key, currentRec[key], value);
+    if (Array.isArray(value) && Array.isArray(currentRec[key])) {
       const beforeArr = currentRec[key] as unknown[];
       if (value.length < beforeArr.length && beforeArr.length - value.length >= 10) {
         reasons.push(`Bulk removal from "${key}" (${beforeArr.length} → ${value.length})`);

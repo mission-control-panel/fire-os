@@ -681,6 +681,20 @@ async function commitProposal(
   if (!activeContext) return;
   const state = activeContext.state;
 
+  if (!readConsent(getScope()).allowWrites) {
+    appendAssistantAction(getScope(), {
+      question: question.slice(0, 200),
+      diff,
+      decision: 'validation-failed',
+      cloudSaved: false,
+      notes: ['Write consent was revoked after the proposal review.'],
+    });
+    card.remove();
+    appendMessage(messages, 'assistant-note', 'Write access was revoked; nothing was changed.');
+    refreshAuditSection();
+    return;
+  }
+
   if (getScope() !== expectedScope || proposalStateFingerprint(state) !== expectedFingerprint) {
     appendAssistantAction(getScope(), {
       question: question.slice(0, 200),

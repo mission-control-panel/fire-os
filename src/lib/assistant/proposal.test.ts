@@ -113,6 +113,16 @@ describe('classifyProposal', () => {
     expect(analysis.reasons[0]).toContain('fd.fd1.amount');
   });
 
+  it('requires re-authentication for high-value numeric changes inside arrays', () => {
+    const state = initializeState();
+    state.expenses = [{ amount: 100000, category: 'essential', date: '2026-01-01', linkedToSWP: false }];
+    const analysis = classifyProposal(state, {
+      expenses: [{ amount: 100000 + HIGH_VALUE_THRESHOLD, category: 'essential', date: '2026-01-01', linkedToSWP: false }],
+    });
+    expect(analysis.requiresReauth).toBe(true);
+    expect(analysis.reasons[0]).toContain('expenses[0].amount');
+  });
+
   it('rejects assistant proposals that mutate valuation caches or privacy controls', () => {
     const state = initializeState();
     expect(applyAssistantProposal(state, { nav: {} })).toMatchObject({ ok: false });

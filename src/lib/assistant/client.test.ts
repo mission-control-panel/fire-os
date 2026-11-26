@@ -49,6 +49,21 @@ describe('queryAssistant client', () => {
     expect(init.headers.Authorization).toBeUndefined();
   });
 
+  it('trims the direct question consistently with the latest message', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ reply: 'ok' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await queryAssistant('  hello  ', {});
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.question).toBe('hello');
+    expect(body.messages).toEqual([{ role: 'user', content: 'hello' }]);
+  });
+
   it('sends the Firebase ID token as a bearer credential when provided', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

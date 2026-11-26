@@ -59,6 +59,10 @@ export async function queryAssistant(
     idToken?: string;
   } = {}
 ): Promise<AssistantQueryResponse> {
+  const normalizedQuestion = question.trim();
+  const normalizedMessages = normalizeConversationMessages(
+    options.messages ?? [{ role: 'user', content: normalizedQuestion }]
+  );
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   try {
@@ -69,9 +73,9 @@ export async function queryAssistant(
         ...(options.idToken ? { Authorization: `Bearer ${options.idToken}` } : {}),
       },
       body: JSON.stringify({
-        question,
+        question: normalizedQuestion,
         contextSummary,
-        messages: normalizeConversationMessages(options.messages ?? [{ role: 'user', content: question }]),
+        messages: normalizedMessages,
         ...(options.sendExact !== undefined ? { sendExact: options.sendExact } : {}),
       }),
       signal: controller.signal,
