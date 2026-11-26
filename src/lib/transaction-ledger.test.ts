@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { applyLedgerImport, createTransactionLedger, previewLedgerImport, reconcileLedger, reconcileLedgerLots, rollbackLedgerImport } from './transaction-ledger';
+import { applyLedgerImport, createTransactionLedger, previewLedgerImport, reconcileLedger, reconcileLedgerLots, rollbackLedgerImport, type LedgerTransaction } from './transaction-ledger';
 
-const purchase = (id: string, amountPaise = 125_000, quantityMicros = 10_000): Record<string, unknown> => ({
-  id, date: '2026-04-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise, quantityMicros, costProvenance: 'exact',
+const purchase = (id: string, amountPaise = 125_000, quantityMicros = 10_000): LedgerTransaction => ({
+  id, dedupKey: id, date: '2026-04-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise, quantityMicros, costProvenance: 'exact',
 });
 
 describe('transaction ledger', () => {
@@ -73,7 +73,7 @@ describe('transaction ledger', () => {
   });
 
   it('carries transfer provenance through to the destination lot', () => {
-    const ledger = {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
       ...createTransactionLedger(),
       transactions: [
         { ...purchase('buy-old', 100_000, 10_000), date: '2024-01-01' },
@@ -86,7 +86,7 @@ describe('transaction ledger', () => {
   });
 
   it('applies stock splits without resetting acquisition cost or date', () => {
-    const ledger = {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
       ...createTransactionLedger(),
       transactions: [
         { ...purchase('buy-split', 100_000, 10_000), date: '2024-01-01' },
