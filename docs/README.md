@@ -173,6 +173,11 @@ maintainer's personal identifiers appear in `src`, `worker`, `shared`,
 `firestore.rules` or `firebase.json`, excluding `presets/` and test files, so
 they cannot be re-introduced into this public repository.
 
+Hosted CI also runs the required `Gitleaks secret scan` check. This is a
+repository-protection check rather than a local npm script; a missing hosted
+context must remain a merge blocker until the owner reconciles CI and branch
+protection.
+
 The Playwright suite is the component-test harness for the React layer; there is
 no jsdom or Testing Library. It covers route resolution and the
 `#<id>.active` selector contract (`routing.spec.ts`), the sidebar, theme and
@@ -224,7 +229,7 @@ the script. A local Vite preview does not apply Firebase Hosting headers.
 2. Before opening a PR: ensure lint + format + build pass and unit tests pass.
 3. For e2e/Playwright changes: run `npm run test:e2e` on the branch first; selector contracts (`id`, `data-testid`) must not change.
 4. Push to a topic branch. The orchestrator will open the PR, or use the GitHub CLI if available.
-5. If a PR has no owning AO session, run `ao review trigger <session-id>` to start the native reviewer, then `ao review ls <session-id>` to inspect verdicts.
+5. Review invocation is owner-controlled. Do not trigger AO or any other reviewer from PR state automatically; if the owner explicitly invokes an AO review, inspect its verdict with the owner-provided session identifier. Otherwise record the independent-review gate as pending.
 
 ## Deployment
 

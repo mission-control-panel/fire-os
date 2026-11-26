@@ -23,6 +23,7 @@ export interface GoalFormErrors {
   name?: string;
   targetToday?: string;
   targetDate?: string;
+  monthlyContribution?: string;
   priority?: string;
 }
 
@@ -56,6 +57,10 @@ export function GoalForm({
     if (!name.trim()) next.name = 'Give the goal a name so you can recognise it later.';
     if (!targetToday || Number(targetToday) <= 10) next.targetToday = 'Enter a target above ₹10.';
     if (!/^\d{4}-\d{2}$/.test(targetDate)) next.targetDate = 'Pick a target month.';
+    const monthly = monthlyContribution.trim() === '' ? undefined : Number(monthlyContribution);
+    if (monthly !== undefined && (!Number.isFinite(monthly) || monthly < 0)) {
+      next.monthlyContribution = 'Enter a non-negative monthly contribution.';
+    }
     if (!priority || Number(priority) < 1) next.priority = 'Priority starts at 1.';
 
     setErrors(next);
@@ -67,7 +72,7 @@ export function GoalForm({
       kind,
       targetToday: Number(targetToday),
       targetDate,
-      monthlyContribution: monthlyContribution ? Number(monthlyContribution) : undefined,
+      monthlyContribution: monthly,
       inflation: 'cpi',
       linkedAssetIds: initialGoal?.linkedAssetIds ?? [],
       currentAmount: initialGoal?.currentAmount ?? 0,
@@ -122,6 +127,7 @@ export function GoalForm({
           step="500"
           value={monthlyContribution}
           onChange={(e) => setMonthlyContribution(e.target.value)}
+          error={errors.monthlyContribution}
           hint="What you plan to add each month towards this goal."
         />
         <Input

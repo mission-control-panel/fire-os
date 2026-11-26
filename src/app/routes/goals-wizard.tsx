@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { appState } from '../../lib/appState';
 import { formatCurrency } from '../../lib/formatters';
+import { persistPortfolioState } from '../../lib/storage';
 import {
   Button,
   Card,
@@ -62,6 +63,8 @@ export function GoalsRoute() {
     const next = editing
       ? goals.map((g) => (g.id === goal.id ? goal : g))
       : [...goals, goal];
+    appState.goals = next;
+    persistPortfolioState(appState, { sync: false });
     setGoals(next);
     closeDialog();
   };

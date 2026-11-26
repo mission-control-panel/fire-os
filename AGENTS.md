@@ -49,7 +49,7 @@
 - **For Playwright/e2e changes:** run `npm run test:e2e` on your branch before requesting review; any selector changes must preserve existing `id` and `data-testid` attributes listed in the design spec (§8 of `docs/master.md`).
 - **For Cloudflare Worker changes:** update `worker/wrangler.toml` + secrets; run `npm run test:worker` to validate worker unit tests.
 - Push to a topic branch (e.g., `ao/fire-os-2/assistant-cors-allowlist`); the orchestrator will open the PR or you may use the GitHub CLI if available.
-- If a PR is not owned by any AO session, run `ao review trigger <session-id>` to start the native adversarial reviewer, then `ao review ls <session-id>` to inspect verdicts.
+- Review invocation is owner-controlled. Do not trigger AO or any other reviewer from PR state automatically; when the owner explicitly invokes an AO review, inspect its verdict with the owner-provided session identifier. Otherwise record the independent-review gate as pending.
 
 ## Documentation after implementation
 

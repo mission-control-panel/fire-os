@@ -1,6 +1,6 @@
-# Bootstrap playbook — GitHub Projects for a solo human + multiple AI agents
+# Bootstrap playbook — historical GitHub Project metadata for a solo human + multiple AI agents
 
-**This is a setup guide, not a separate task database.** The configured GitHub Project and linked GitHub Issues are the live task truth.
+**This is a historical/reference guide, not the FIRE OS task database.** FIRE OS uses Trello for task identity, readiness, claims and workflow. GitHub Projects and linked Issues are supporting metadata/evidence only unless the owner explicitly authorizes a metadata operation.
 
 ## 1. Scope and prerequisites
 
