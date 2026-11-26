@@ -699,7 +699,9 @@ cover the withdrawal. A manual simulator awaits cloud persistence.
 - **Safety runway and crash protocol:** the Calculator, Dashboard safety card,
   crash alert and Assistant share `portfolioSafetyReport()`. Current cash,
   liquid funds, FD proceeds after any configured penalty, and restricted/illiquid
-  balances are shown separately. Essential expenses are the stored monthly
+  balances are shown separately. Fixed deposits use the optional persisted
+  `earlyRedemptionPenaltyRate`; no penalty is invented when it is absent.
+  Essential expenses are the stored monthly
   `profile.annualExpenses` value; missing expenses or stale/missing valuations
   show `Unavailable` rather than zero. The default crash protocol preserves 12
   months of essential expenses and caps cumulative deployment; each level is a

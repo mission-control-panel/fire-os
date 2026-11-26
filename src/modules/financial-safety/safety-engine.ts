@@ -74,6 +74,8 @@ export interface AllocationDriftInput {
   holdings: Record<string, number>;
   targets: Record<string, number>;
   dataComplete?: boolean;
+  /** Optional legacy denominator, including assets outside target buckets. */
+  totalValue?: number;
 }
 
 export interface AllocationDriftAnalysis {
@@ -135,10 +137,12 @@ export function analyzeLiquidity(input: LiquidityInput): LiquidityAnalysis {
   let restricted = 0;
   let illiquid = 0;
   let unknownValue = 0;
+  let unknownValuationCount = 0;
 
   for (const asset of input.assets) {
     if (asset.valuation !== 'current') {
       unknownValue += asset.value;
+      unknownValuationCount++;
       continue;
     }
     const penalty = asset.value * (asset.penaltyRate ?? 0);
@@ -155,14 +159,30 @@ export function analyzeLiquidity(input: LiquidityInput): LiquidityAnalysis {
   }
 
   const accessibleValue = cash + liquidFunds + fixedDepositsGross - fixedDepositPenalties;
-  const status: SafetyStatus = expenses === null || unknownValue > 0 ? 'insufficient-data' : 'available';
+  const aggregateValues = [cash, liquidFunds, fixedDepositsGross, fixedDepositPenalties, restricted, illiquid, unknownValue, accessibleValue];
+  if (aggregateValues.some(value => !finiteNonNegative(value))) {
+    return {
+      status: 'unavailable', reason: 'invalid-input', monthlyEssentialExpenses: expenses,
+      cash: 0, liquidFunds: 0, fixedDepositsGross: 0, fixedDepositPenalties: 0,
+      restricted: 0, illiquid: 0, unknownValue: 0, accessibleValue: null, runwayMonths: null,
+    };
+  }
+  const status: SafetyStatus = expenses === null || unknownValuationCount > 0 ? 'insufficient-data' : 'available';
   const reason = expenses === null
     ? 'expenses-missing'
-    : unknownValue > 0
+    : unknownValuationCount > 0
     ? 'valuation-missing'
     : accessibleValue > 0 || expenses === 0
       ? 'ok'
       : 'no-accessible-assets';
+  const runwayMonths = status === 'available' && expenses !== null && expenses > 0 ? accessibleValue / expenses : null;
+  if (runwayMonths !== null && !Number.isFinite(runwayMonths)) {
+    return {
+      status: 'unavailable', reason: 'invalid-input', monthlyEssentialExpenses: expenses,
+      cash: 0, liquidFunds: 0, fixedDepositsGross: 0, fixedDepositPenalties: 0,
+      restricted: 0, illiquid: 0, unknownValue: 0, accessibleValue: null, runwayMonths: null,
+    };
+  }
   return {
     status,
     reason,
@@ -175,7 +195,7 @@ export function analyzeLiquidity(input: LiquidityInput): LiquidityAnalysis {
     illiquid,
     unknownValue,
     accessibleValue: status === 'available' ? accessibleValue : accessibleValue,
-    runwayMonths: status === 'available' && expenses !== null && expenses > 0 ? accessibleValue / expenses : null,
+    runwayMonths,
   };
 }
 
@@ -187,20 +207,30 @@ export function analyzeCrashProtocol(input: CrashProtocolInput): CrashProtocolAn
     || !levels.length || levels.some(level => !finiteNonNegative(level.drawdownTriggerPercent) || !finiteNonNegative(level.deploymentPercent) || level.deploymentPercent > 100)) {
     return { status: 'unavailable', reason: 'invalid-input', reserveMonths, reserveAmount: null, crashFund: null, cumulativeCap: null, levels: [] };
   }
-  if (input.liquidity.status === 'unavailable' || input.liquidity.accessibleValue === null || input.liquidity.monthlyEssentialExpenses === null) {
+  if (input.liquidity.status !== 'available' || input.liquidity.accessibleValue === null || input.liquidity.monthlyEssentialExpenses === null) {
     return { status: 'unavailable', reason: 'liquidity-missing', reserveMonths, reserveAmount: null, crashFund: null, cumulativeCap: null, levels: levels.map(level => ({ ...level, amount: null, cumulativeAmount: null, eligible: null })) };
   }
-  if (!Number.isFinite(input.currentDrawdownPercent) || (input.currentDrawdownPercent ?? 0) < 0) {
-    return { status: 'insufficient-data', reason: 'drawdown-missing', reserveMonths, reserveAmount: input.liquidity.monthlyEssentialExpenses * reserveMonths, crashFund: null, cumulativeCap: null, levels: levels.map(level => ({ ...level, amount: null, cumulativeAmount: null, eligible: null })) };
+  if (!Number.isFinite(input.currentDrawdownPercent) || (input.currentDrawdownPercent ?? 0) < 0 || (input.currentDrawdownPercent ?? 0) > 100) {
+    const reserveAmount = input.liquidity.monthlyEssentialExpenses * reserveMonths;
+    return { status: Number.isFinite(reserveAmount) ? 'insufficient-data' : 'unavailable', reason: Number.isFinite(reserveAmount) ? 'drawdown-missing' : 'invalid-input', reserveMonths, reserveAmount: Number.isFinite(reserveAmount) ? reserveAmount : null, crashFund: null, cumulativeCap: null, levels: levels.map(level => ({ ...level, amount: null, cumulativeAmount: null, eligible: null })) };
   }
 
   const reserveAmount = input.liquidity.monthlyEssentialExpenses * reserveMonths;
+  if (!finiteNonNegative(reserveAmount)) {
+    return { status: 'unavailable', reason: 'invalid-input', reserveMonths, reserveAmount: null, crashFund: null, cumulativeCap: null, levels: [] };
+  }
   const crashFund = Math.max(0, input.liquidity.accessibleValue - reserveAmount);
   const cumulativeCap = crashFund * (cumulativeCapPercent / 100);
+  if (!finiteNonNegative(crashFund) || !finiteNonNegative(cumulativeCap)) {
+    return { status: 'unavailable', reason: 'invalid-input', reserveMonths, reserveAmount: null, crashFund: null, cumulativeCap: null, levels: [] };
+  }
   let cumulativeAmount = 0;
   const resultLevels = levels.map(level => {
     const requested = crashFund * (level.deploymentPercent / 100);
     const amount = Math.min(requested, Math.max(0, cumulativeCap - cumulativeAmount));
+    if (!finiteNonNegative(requested) || !finiteNonNegative(amount)) {
+      return { ...level, amount: null, cumulativeAmount: null, eligible: null };
+    }
     cumulativeAmount += amount;
     return {
       ...level,
@@ -209,7 +239,10 @@ export function analyzeCrashProtocol(input: CrashProtocolInput): CrashProtocolAn
       eligible: input.currentDrawdownPercent! >= level.drawdownTriggerPercent,
     };
   });
-  return { status: input.liquidity.status, reason: 'ok', reserveMonths, reserveAmount, crashFund, cumulativeCap, levels: resultLevels };
+  if (resultLevels.some(level => level.amount === null)) {
+    return { status: 'unavailable', reason: 'invalid-input', reserveMonths, reserveAmount: null, crashFund: null, cumulativeCap: null, levels: resultLevels };
+  }
+  return { status: 'available', reason: 'ok', reserveMonths, reserveAmount, crashFund, cumulativeCap, levels: resultLevels };
 }
 
 export function analyzeAllocationDrift(input: AllocationDriftInput): AllocationDriftAnalysis {
@@ -217,8 +250,8 @@ export function analyzeAllocationDrift(input: AllocationDriftInput): AllocationD
   if (input.dataComplete === false || targetEntries.some(([, value]) => !finiteNonNegative(value))) {
     return { status: 'insufficient-data', totalValue: null, current: {}, target: { ...input.targets }, driftAmount: {}, recommendations: [] };
   }
-  const totalValue = Object.values(input.holdings).reduce((sum, value) => sum + value, 0);
-  if (!finiteNonNegative(totalValue) || targetEntries.length === 0 || targetEntries.every(([, value]) => value === 0)) {
+  const totalValue = input.totalValue ?? Object.values(input.holdings).reduce((sum, value) => sum + value, 0);
+  if (!finiteNonNegative(totalValue) || totalValue <= 0 || targetEntries.length === 0 || targetEntries.every(([, value]) => value === 0)) {
     return { status: 'unavailable', totalValue: null, current: {}, target: { ...input.targets }, driftAmount: {}, recommendations: [] };
   }
   const current: Record<string, number> = {};
@@ -240,8 +273,9 @@ export function analyzeAllocationDrift(input: AllocationDriftInput): AllocationD
 
 function navStatus(state: FireOSState, schemeCode: string | undefined): AssetValuationStatus {
   const entry = schemeCode ? state.nav[schemeCode] : undefined;
-  if (!entry || !Number.isFinite(entry.nav)) return 'missing';
-  if (entry.status === 'stale' || !Number.isFinite(Date.parse(entry.timestamp)) || Date.now() - Date.parse(entry.timestamp) > entry.ttl) return 'stale';
+  if (!entry || !Number.isFinite(entry.nav) || entry.nav <= 0) return 'missing';
+  const timestamp = Date.parse(entry.timestamp);
+  if (!Number.isFinite(timestamp) || timestamp > Date.now() || entry.status === 'stale' || Date.now() - timestamp > entry.ttl) return 'stale';
   return 'current';
 }
 
@@ -249,23 +283,26 @@ function navStatus(state: FireOSState, schemeCode: string | undefined): AssetVal
 export function portfolioSafetyReport(state: FireOSState): PortfolioSafetyReport {
   const assets: LiquidityAsset[] = [];
   const add = (asset: LiquidityAsset) => assets.push(asset);
-  Object.entries(state.sip || {}).forEach(([id, fund]) => add({ id: `sip:${id}`, kind: 'liquid-fund', value: Math.max(0, fund.units * (state.nav[fund.schemeCode ?? '']?.nav ?? 0)), valuation: navStatus(state, fund.schemeCode) }));
-  Object.entries(state.mf || {}).forEach(([id, fund]) => add({ id: `mf:${id}`, kind: 'liquid-fund', value: Math.max(0, fund.units * (state.nav[fund.schemeCode ?? '']?.nav ?? 0)), valuation: navStatus(state, fund.schemeCode) }));
-  Object.entries(state.fd || {}).forEach(([id, holding]) => add({ id: `fd:${id}`, kind: 'fixed-deposit', value: Math.max(0, holding.amount), valuation: 'current' }));
-  Object.entries(state.bonds || {}).forEach(([id, holding]) => add({ id: `bond:${id}`, kind: 'liquid-fund', value: Math.max(0, holding.amount), valuation: 'current' }));
+  Object.entries(state.sip || {}).forEach(([id, fund]) => add({ id: `sip:${id}`, kind: 'liquid-fund', value: Math.max(0, fund.units * (state.nav[fund.schemeCode ?? '']?.nav ?? 0)), valuation: fund.units === 0 ? 'current' : navStatus(state, fund.schemeCode) }));
+  Object.entries(state.mf || {}).forEach(([id, fund]) => add({ id: `mf:${id}`, kind: 'liquid-fund', value: Math.max(0, fund.units * (state.nav[fund.schemeCode ?? '']?.nav ?? 0)), valuation: fund.units === 0 ? 'current' : navStatus(state, fund.schemeCode) }));
+  Object.entries(state.fd || {}).forEach(([id, holding]) => add({ id: `fd:${id}`, kind: 'fixed-deposit', value: Math.max(0, holding.amount), valuation: 'current', penaltyRate: holding.earlyRedemptionPenaltyRate }));
+  Object.entries(state.bonds || {}).forEach(([id, holding]) => add({ id: `bond:${id}`, kind: 'illiquid', value: Math.max(0, holding.amount), valuation: 'current' }));
   Object.entries(state.epf || {}).forEach(([id, holding]) => add({ id: `epf:${id}`, kind: 'restricted', value: Math.max(0, holding.amount), valuation: 'current' }));
   Object.entries(state.esop || {}).forEach(([id, holding]) => add({ id: `esop:${id}`, kind: 'restricted', value: Math.max(0, holding.amount), valuation: 'current' }));
-  Object.entries(state.demat || {}).forEach(([id, holding]) => add({ id: `demat:${id}`, kind: 'liquid-fund', value: Math.max(0, holding.currentValue), valuation: 'current' }));
+  Object.entries(state.demat || {}).forEach(([id, holding]) => add({ id: `demat:${id}`, kind: 'illiquid', value: Math.max(0, holding.currentValue), valuation: 'current' }));
   Object.entries(state.otherHoldings || {}).forEach(([id, holding]) => {
     const name = holding.name.toLowerCase();
     const kind: LiquidityAssetKind = /cash|bank|savings/.test(name) ? 'cash' : /liquid|money market/.test(name) ? 'liquid-fund' : /fd|fixed deposit/.test(name) ? 'fixed-deposit' : /restricted|unvested|epf|provident/.test(name) ? 'restricted' : 'illiquid';
     add({ id: `other:${id}`, kind, value: Math.max(0, holding.amount), valuation: 'current' });
   });
   const netWorth = totalNetWorth(state);
-  const monthlyExpenses = Number.isFinite(state.profile.annualExpenses) && state.profile.annualExpenses >= 0 ? state.profile.annualExpenses : null;
+  const monthlyExpenses = Number.isFinite(state.profile.annualExpenses) && state.profile.annualExpenses > 0 ? state.profile.annualExpenses : null;
   const liquidity = analyzeLiquidity({ assets, monthlyEssentialExpenses: monthlyExpenses });
   const marketTimestamp = state.niftyData ? Date.parse(state.niftyData.timestamp) : NaN;
-  const marketDataFresh = Number.isFinite(marketTimestamp) && Date.now() - marketTimestamp <= 60 * 60 * 1000;
+  const marketDataFresh = Number.isFinite(marketTimestamp)
+    && marketTimestamp <= Date.now()
+    && Date.now() - marketTimestamp <= 60 * 60 * 1000
+    && state.niftyData?.status !== 'manual';
   const marketDrawdownPercent = state.niftyData && state.niftyData.high52w > 0 && state.niftyData.level > 0
     ? Math.max(0, ((state.niftyData.high52w - state.niftyData.level) / state.niftyData.high52w) * 100)
     : null;

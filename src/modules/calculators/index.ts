@@ -10,7 +10,7 @@ import { initTaxModule } from './tax';
 import { calculateMonthlyWithdrawal, recordMonthlyWithdrawal, DEFAULT_FUND_BUCKETS } from './swp-scheduler';
 import { compareFIScenarios, type FIScenarioInput, type FIScenarioResult } from './scenario-modeler';
 import { sipPauseImpact } from '../../lib/calculations';
-import { portfolioSafetyReport } from '../financial-safety/safety-engine';
+import { analyzeCrashProtocol, portfolioSafetyReport } from '../financial-safety/safety-engine';
 
 let activeContext = createFeatureContext();
 let D = activeContext.state;
@@ -442,7 +442,10 @@ async function refreshNiftyData(context: FeatureContext = activeContext) {
     const highVal = niftyData.high52w;
     const currentVal = niftyData.level;
     const drawdown = ((highVal - currentVal) / highVal) * 100;
-    const totalNW = context.ports.calculations.totalNetWorth(D).netWorth;
+    const safety = portfolioSafetyReport(D);
+    const crash = analyzeCrashProtocol({ liquidity: safety.liquidity, currentDrawdownPercent: safety.marketDataFresh ? drawdown : null });
+    const amountLabel = (amount: number | null | undefined) => amount === null || amount === undefined ? 'Unavailable' : formatCurrency(amount);
+    const amountFor = (trigger: number) => crash.levels.find(level => level.drawdownTriggerPercent === trigger)?.amount;
 
     const crashPanel = document.getElementById('crash');
     if (crashPanel) {
@@ -456,17 +459,17 @@ async function refreshNiftyData(context: FeatureContext = activeContext) {
           </div>
           <div class="scenario">
             <span class="scenario-label">10% Crash Deploy</span>
-            <span class="scenario-value">${formatCurrency(totalNW * 0.1)}</span>
+            <span class="scenario-value">${amountLabel(amountFor(10))}</span>
             <span class="scenario-desc">Average down position</span>
           </div>
           <div class="scenario">
             <span class="scenario-label">15% Crash Deploy</span>
-            <span class="scenario-value">${formatCurrency(totalNW * 0.15)}</span>
+            <span class="scenario-value">${amountLabel(amountFor(15))}</span>
             <span class="scenario-desc">Aggressive buy</span>
           </div>
           <div class="scenario">
             <span class="scenario-label">25% Crash Deploy</span>
-            <span class="scenario-value">${formatCurrency(totalNW * 0.25)}</span>
+            <span class="scenario-value">${amountLabel(amountFor(25))}</span>
             <span class="scenario-desc">Max deployment</span>
           </div>
         `;

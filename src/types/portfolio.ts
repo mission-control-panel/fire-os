@@ -38,6 +38,8 @@ export interface SIPFund {
 export interface Holding {
   amount: number;
   currency: string;
+  /** Optional early-redemption penalty for fixed deposits, expressed 0..1. */
+  earlyRedemptionPenaltyRate?: number;
 }
 
 /** Represents a user-defined portfolio holding with an expected annual return */

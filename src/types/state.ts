@@ -290,7 +290,11 @@ const profileSchema = z.strictObject({
   taxSlabRate: finiteNumberSchema.optional(), annualExpenses: finiteNumberSchema,
   fiTarget: finiteNumberSchema, monthlyIncome: finiteNumberSchema,
 });
-const holdingMapSchema = z.record(z.string(), z.strictObject({ amount: finiteNumberSchema, currency: z.string() }));
+const holdingMapSchema = z.record(z.string(), z.strictObject({
+  amount: finiteNumberSchema,
+  currency: z.string(),
+  earlyRedemptionPenaltyRate: exactOptional(finiteNumberSchema.min(0).max(1)),
+}));
 const otherHoldingMapSchema = z.record(z.string(), z.strictObject({
   name: z.string().min(1).refine((name) => name.trim().length > 0 && name.length <= 200),
   amount: finiteNumberSchema.min(0),

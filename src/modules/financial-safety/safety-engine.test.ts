@@ -42,6 +42,32 @@ describe('liquidity safety engine', () => {
     expect(stale.runwayMonths).toBeNull();
     expect(stale.unknownValue).toBe(300_000);
   });
+
+  it('treats a zero profile expense default as missing through the portfolio adapter', () => {
+    const state = initializeState();
+    state.fd = { fd: { amount: 1_000_000, currency: 'INR' } };
+    state.niftyData = {
+      level: 20_000,
+      high52w: 25_000,
+      timestamp: new Date().toISOString(),
+      source: 'test',
+      status: 'live',
+    };
+    const report = portfolioSafetyReport(state);
+    expect(report.liquidity.status).toBe('insufficient-data');
+    expect(report.crash.levels.every(level => level.amount === null)).toBe(true);
+  });
+
+  it('treats positive-unit missing and zero NAVs as incomplete valuations', () => {
+    const state = initializeState();
+    state.profile.annualExpenses = 50_000;
+    state.sip = { fund: { name: 'Fund', schemeCode: 'missing', units: 10, startDate: '2025-01', monthlyAmount: 1_000 } };
+    state.nav = { missing: { schemeCode: 'missing', nav: 0, timestamp: new Date().toISOString(), ttl: 3_600_000 } };
+    const report = portfolioSafetyReport(state);
+    expect(report.liquidity.status).toBe('insufficient-data');
+    expect(report.liquidity.runwayMonths).toBeNull();
+    expect(report.crash.levels.every(level => level.amount === null)).toBe(true);
+  });
 });
 
 describe('crash protocol', () => {
@@ -75,6 +101,39 @@ describe('crash protocol', () => {
     expect(result.status).toBe('insufficient-data');
     expect(result.levels.every(level => level.amount === null)).toBe(true);
   });
+
+  it('blocks deployment for incomplete valuation coverage and guards overflow', () => {
+    const liquidity = analyzeLiquidity({
+      monthlyEssentialExpenses: 50_000,
+      assets: [
+        { id: 'cash', kind: 'cash', value: 1_000_000, valuation: 'current' },
+        { id: 'stale', kind: 'liquid-fund', value: 500_000, valuation: 'stale' },
+      ],
+    });
+    const blocked = analyzeCrashProtocol({ liquidity, currentDrawdownPercent: 20 });
+    expect(blocked.levels.every(level => level.amount === null)).toBe(true);
+
+    const huge = analyzeCrashProtocol({
+      liquidity: analyzeLiquidity({
+        monthlyEssentialExpenses: Number.MAX_VALUE,
+        assets: [{ id: 'cash', kind: 'cash', value: Number.MAX_VALUE, valuation: 'current' }],
+      }),
+      currentDrawdownPercent: 20,
+      reserveMonths: 2,
+    });
+    expect(huge.status).toBe('unavailable');
+  });
+
+  it('rejects manual and future market timestamps as fresh drawdown inputs', () => {
+    const state = initializeState();
+    state.profile.annualExpenses = 50_000;
+    state.fd = { fd: { amount: 1_000_000, currency: 'INR' } };
+    state.niftyData = { level: 20_000, high52w: 25_000, timestamp: new Date().toISOString(), source: 'manual', status: 'manual' };
+    expect(portfolioSafetyReport(state).crash.status).toBe('insufficient-data');
+    state.niftyData.status = 'live';
+    state.niftyData.timestamp = new Date(Date.now() + 60_000).toISOString();
+    expect(portfolioSafetyReport(state).crash.status).toBe('insufficient-data');
+  });
 });
 
 describe('allocation drift', () => {
@@ -100,16 +159,40 @@ describe('allocation drift', () => {
     expect(result.status).toBe('insufficient-data');
     expect(result.recommendations).toEqual([]);
   });
+
+  it('preserves the legacy denominator when non-bucket assets are included', () => {
+    const result = analyzeAllocationDrift({
+      holdings: { equity: 800_000, debt: 200_000 },
+      targets: { equity: 60, debt: 40 },
+      totalValue: 2_000_000,
+    });
+    expect(result.current).toEqual({ equity: 40, debt: 10 });
+    expect(result.recommendations).toEqual([
+      'Increase equity by ₹4.0L (20.0% drift)',
+      'Increase debt by ₹6.0L (30.0% drift)',
+    ]);
+  });
 });
 
 describe('portfolio adapter', () => {
   it('shares a single safety report shape for the app state', () => {
     const state = initializeState();
     state.profile.annualExpenses = 50_000;
-    state.fd = { fd: { amount: 1_000_000, currency: 'INR' } };
+    state.fd = { fd: { amount: 1_000_000, currency: 'INR', earlyRedemptionPenaltyRate: 0.02 } };
     const report = portfolioSafetyReport(state);
-    expect(report.liquidity.accessibleValue).toBe(1_000_000);
+    expect(report.liquidity.accessibleValue).toBe(980_000);
+    expect(report.liquidity.fixedDepositPenalties).toBe(20_000);
     expect(report.crash.reserveAmount).toBe(600_000);
     expect(report.allocation.status).toBe('unavailable');
+  });
+
+  it('does not count bonds or demat equity as emergency runway', () => {
+    const state = initializeState();
+    state.profile.annualExpenses = 50_000;
+    state.bonds = { bond: { amount: 1_000_000, currency: 'INR' } };
+    state.demat = { stock: { isin: 'INE000A01036', quantity: 1, currentValue: 1_000_000, name: 'Stock' } };
+    const report = portfolioSafetyReport(state);
+    expect(report.liquidity.accessibleValue).toBe(0);
+    expect(report.liquidity.runwayMonths).toBe(0);
   });
 });

@@ -35,11 +35,9 @@ export function calculateAllocationDrift(
   totalValue: number,
   targets: { [bucketId: string]: number },
 ): AllocationDrift {
-  // Keep the legacy port shape while routing all callers through the
-  // validated shared engine. `totalValue` is retained for compatibility with
-  // existing injected ports and tests; the engine derives it from holdings.
-  void totalValue;
-  const result = analyzeAllocationDrift({ holdings, targets });
+  // Keep the legacy denominator contract while routing the calculation through
+  // the validated shared engine. The denominator may include non-bucket assets.
+  const result = analyzeAllocationDrift({ holdings, targets, totalValue });
   return {
     current: result.current,
     target: result.target,

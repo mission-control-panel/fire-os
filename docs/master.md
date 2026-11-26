@@ -467,8 +467,10 @@ unchanged. See [AI reference](ai.md#full-request-trace-from-chat-event-to-model-
   It preserves a configurable default 12-month essential-expense reserve, models
   FD penalties, excludes restricted/illiquid assets from accessible runway, and
   returns explicit unavailable/insufficient-data states for missing expenses or
-  stale valuations. Crash levels are recommendations only and never create
-  orders. Allocation drift uses the same validated target-band calculation in
+  stale valuations. Fixed deposits may carry an optional
+  `earlyRedemptionPenaltyRate` in the persisted holding shape; absent metadata
+  is treated as zero rather than guessed. Crash levels are recommendations only
+  and never create orders. Allocation drift uses the same validated target-band calculation in
   the calculator, dashboard, plan and Assistant context.
 
 ## Build, route and test paths
