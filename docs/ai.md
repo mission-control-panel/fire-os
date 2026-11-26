@@ -126,6 +126,11 @@ Request shape/prompt policy and upstream helpers live in
 `worker/test/`. Treat provider error detail and user questions as potentially
 sensitive operational data.
 
+The Worker response includes `fallback: true` when the configured provider
+cannot answer; the UI keeps the deterministic safety message and performs no
+proposal workflow. Model routing remains limited to the configured free-model
+list, and no paid model route is selected implicitly.
+
 ## Model output and proposal extraction
 
 System instruction says use only supplied context for user-specific facts,
