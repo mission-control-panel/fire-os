@@ -48,6 +48,7 @@ export interface TaxLotDisposal {
   units: number;
   salePrice: number;
   fees?: number;
+  assetClass?: TaxAssetClass;
 }
 
 export interface TaxLotResult {
@@ -120,7 +121,7 @@ export function calculateTaxLotPlan(input: {
   const rules = input.rules ?? CURRENT_INDIAN_CAPITAL_GAINS_RULES;
   const financialYear = financialYearFor(input.asOf);
   if (!isValid(input.asOf) || !financialYear) return emptyResult(rules, 'unavailable', ['The as-of date is invalid.']);
-  if (!Array.isArray(input.lots) || input.lots.length === 0) return emptyResult(rules, 'insufficient-data', ['Dated acquisition lots are unavailable; the result must remain an estimate or unknown.']);
+  if (!Array.isArray(input.lots) || (input.lots.length === 0 && !(input.realizedLots?.length))) return emptyResult(rules, 'insufficient-data', ['Dated acquisition lots are unavailable; the result must remain an estimate or unknown.']);
 
   const results: TaxLotResult[] = [];
   let totalCurrentValue = 0;
@@ -155,12 +156,17 @@ export function calculateTaxLotPlan(input: {
     const lot = [...input.lots, ...(input.realizedLots ?? [])].find(candidate => candidate.id === disposal.lotId);
     if (!lot || !finiteNonNegative(disposal.units) || disposal.units <= 0 || disposal.units > lot.units || !finiteNonNegative(disposal.salePrice)) return totals;
     const gain = disposal.units * disposal.salePrice - lot.costBasis * (disposal.units / lot.units) - (disposal.fees ?? 0);
+    const longTerm = isLongTermOnDate(lot.acquiredDate, parseISO(disposal.saleDate), disposal.assetClass ?? lot.assetClass, rules) === true;
     if (gain >= 0) totals.gains += gain;
     else totals.losses += Math.abs(gain);
+    if (longTerm) {
+      if (gain >= 0) totals.ltcgGains += gain;
+      else totals.ltcgLosses += Math.abs(gain);
+    }
     return totals;
-  }, { gains: 0, losses: 0 });
+  }, { gains: 0, losses: 0, ltcgGains: 0, ltcgLosses: 0 });
 
-  const netRealizedGain = Math.max(0, realized.gains - realized.losses);
+  const netRealizedGain = Math.max(0, realized.ltcgGains - realized.ltcgLosses);
 
   return {
     status: exact ? 'available' : 'estimated',

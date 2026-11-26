@@ -23,6 +23,8 @@ export interface TaxHarvestPlan {
   remainingLimit: number;
   totalRecommendedHarvest: number;
   totalRecommendedHarvestGain: number;
+  totalRealizedGains: number;
+  totalRealizedLosses: number;
   recommendations: FundHarvestRecommendation[];
   dataQuality: TaxLotHarvestPlan['dataQuality'];
   financialYear: string | null;
@@ -47,8 +49,9 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; r
         const quantity = transaction.quantityMicros ?? 0;
         const salePrice = quantity > 0 ? (transaction.amountPaise / 100) / (quantity / 1_000_000) : 0;
         for (const lot of consumed) {
-          realizedLots.push({ id: lot.id, fundKey: lot.instrumentId, fundName: lot.instrumentId, assetClass: 'equity-mutual-fund', acquiredDate: lot.acquiredDate, units: lot.quantityMicros / 1_000_000, costBasis: lot.costPaise / 100, currentNAV: 0, dataQuality: lot.costProvenance === 'exact' ? 'exact' : 'estimated' });
-          disposals.push({ lotId: lot.id, saleDate: transaction.date, units: lot.quantityMicros / 1_000_000, salePrice });
+          const assetClass = ledger.instruments[lot.instrumentId]?.assetClass === 'equity-listed' ? 'equity-listed' : 'equity-mutual-fund';
+          realizedLots.push({ id: lot.id, fundKey: lot.instrumentId, fundName: lot.instrumentId, assetClass, acquiredDate: lot.acquiredDate, units: lot.quantityMicros / 1_000_000, costBasis: lot.costPaise / 100, currentNAV: 0, dataQuality: lot.costProvenance === 'exact' ? 'exact' : 'estimated' });
+          disposals.push({ lotId: lot.id, saleDate: transaction.date, units: lot.quantityMicros / 1_000_000, salePrice, assetClass });
         }
       })
       : ledger.lots;
@@ -94,6 +97,8 @@ function emptyLedgerPlan(state: FireOSState): TaxHarvestPlan {
     remainingLimit: Math.max(0, configuredLimit - (state.taxCalendar?.lastHarvestedAmount ?? 0)),
     totalRecommendedHarvest: 0,
     totalRecommendedHarvestGain: 0,
+    totalRealizedGains: 0,
+    totalRealizedLosses: 0,
     recommendations: [],
     dataQuality: 'exact',
     financialYear: null,
@@ -115,6 +120,8 @@ function unavailableLedgerPlan(state: FireOSState, reason: string): TaxHarvestPl
     remainingLimit: Math.max(0, configuredLimit - (state.taxCalendar?.lastHarvestedAmount ?? 0)),
     totalRecommendedHarvest: 0,
     totalRecommendedHarvestGain: 0,
+    totalRealizedGains: 0,
+    totalRealizedLosses: 0,
     recommendations: [],
     dataQuality: 'unknown',
     financialYear: null,
@@ -172,6 +179,8 @@ function fromTaxLotPlan(plan: TaxLotHarvestPlan, state: FireOSState): TaxHarvest
     remainingLimit: plan.remainingExemption ?? 0,
     totalRecommendedHarvest,
     totalRecommendedHarvestGain,
+    totalRealizedGains: plan.totalRealizedGains ?? 0,
+    totalRealizedLosses: plan.totalRealizedLosses ?? 0,
     recommendations,
     dataQuality: plan.dataQuality,
     financialYear: plan.financialYear,
@@ -190,15 +199,15 @@ export function calculateLTCGHarvestPlan(
 ): TaxHarvestPlan {
   const ledgerState = ledgerLotsForState(state, now);
   if (ledgerState.hasSource && !ledgerState.reconciled) return unavailableLedgerPlan(state, 'The transaction ledger could not be reconciled; the result is unavailable.');
-  if (ledgerState.disposals.some((disposal) => disposal.saleDate < CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom)) {
+  if (now.toISOString().slice(0, 10) < CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom || ledgerState.disposals.some((disposal) => disposal.saleDate < CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom)) {
     return unavailableLedgerPlan(state, 'Historical disposals predate the versioned tax rules available to this planner.');
   }
-  if (ledgerState.reconciled && ledgerState.hasSource && ledgerState.lots.length === 0) {
+  if (ledgerState.reconciled && ledgerState.hasSource && ledgerState.lots.length === 0 && ledgerState.disposals.length === 0) {
     return ledgerState.hasCurrentLots
       ? unavailableLedgerPlan(state, 'Current ledger holdings could not be matched to complete, fresh valuations.')
       : emptyLedgerPlan(state);
   }
-  if (ledgerState.lots.length > 0) {
+  if (ledgerState.reconciled && ledgerState.hasSource) {
     const configuredLimit = state.taxCalendar?.harvestTarget ?? 0;
     const rules = { ...CURRENT_INDIAN_CAPITAL_GAINS_RULES, section112aExemption: configuredLimit };
     return fromTaxLotPlan(calculateTaxLotPlan({
@@ -325,6 +334,8 @@ export function calculateLTCGHarvestPlan(
     remainingLimit,
     totalRecommendedHarvest,
     totalRecommendedHarvestGain,
+    totalRealizedGains: 0,
+    totalRealizedLosses: 0,
     recommendations,
     dataQuality: 'estimated',
     financialYear: null,

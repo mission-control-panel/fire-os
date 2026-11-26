@@ -372,7 +372,7 @@ export function reconcileLedgerLots(ledger: TransactionLedger, onSale?: (transac
       const lot = queue[0];
       const consumed = Math.min(remaining, lot.quantityMicros);
       const cost = lot.quantityMicros === consumed ? lot.costPaise : Math.round(lot.costPaise * consumed / lot.quantityMicros);
-      consumedLots.push({ ...lot, id: lot.id, quantityMicros: consumed, costPaise: cost });
+      consumedLots.push({ ...lot, id: `${lot.id}:consumed:${transaction.id}:${consumedLots.length}`, quantityMicros: consumed, costPaise: cost });
       lot.quantityMicros -= consumed;
       lot.costPaise -= cost;
       remaining -= consumed;
