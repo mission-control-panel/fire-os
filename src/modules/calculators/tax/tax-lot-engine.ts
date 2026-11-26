@@ -1,4 +1,4 @@
-import { addMonths, isAfter, isValid, parseISO } from 'date-fns';
+import { addMonths, isAfter, isValid, parseISO, startOfDay } from 'date-fns';
 
 export type TaxAssetClass = 'equity-listed' | 'equity-mutual-fund' | 'other-financial' | 'other';
 export type TaxLotDataQuality = 'exact' | 'estimated' | 'unknown';
@@ -182,5 +182,5 @@ export function calculateTaxLotPlan(input: {
 export function isLongTermOnDate(acquiredDate: string, saleDate: Date, assetClass: TaxAssetClass, rules = CURRENT_INDIAN_CAPITAL_GAINS_RULES): boolean | null {
   const period = holdingPeriodMonths(acquiredDate, saleDate);
   const threshold = rules.holdingPeriodMonths[assetClass];
-  return period === null || threshold === undefined ? null : isAfter(saleDate, addMonths(parseISO(acquiredDate), threshold));
+  return period === null || threshold === undefined ? null : isAfter(startOfDay(saleDate), startOfDay(addMonths(parseISO(acquiredDate), threshold)));
 }
