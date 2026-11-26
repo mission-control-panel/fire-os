@@ -6,6 +6,7 @@
  * completeness come from state; the retry calls the shared `refreshStaleData`.
  */
 import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, Card, CardTitle } from '../../ui';
 import { useStore } from '../../hooks/use-store';
 import {
@@ -79,6 +80,62 @@ function TrustRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function TrustSummary({
+  staleCount,
+  completeness,
+  market,
+}: {
+  staleCount: number;
+  completeness: number;
+  market: MarketRefreshStatus;
+}) {
+  const summary = staleCount > 0
+    ? {
+        title: 'Refresh needed',
+        detail: 'Some valuations are stale, so totals may change after refresh.',
+        className: 'border-(--color-warning) bg-(--color-surface-raised)',
+      }
+    : market === 'error'
+      ? {
+          title: 'Market data unavailable',
+          detail: 'Portfolio values remain available, but benchmark data could not be refreshed.',
+          className: 'border-(--color-warning) bg-(--color-surface-raised)',
+        }
+      : completeness < 100
+        ? {
+            title: 'Complete your profile',
+            detail: 'Add the missing assumptions and holdings to improve dashboard estimates.',
+            className: 'border-(--color-border) bg-(--color-surface-raised)',
+          }
+        : {
+            title: 'Data is ready to review',
+            detail: 'The dashboard is using the current saved portfolio inputs.',
+            className: 'border-(--color-accent) bg-(--color-surface-raised)',
+          };
+
+  return (
+    <div
+      id="data-trust-summary"
+      role="status"
+      className={`flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 ${summary.className}`}
+    >
+      <div>
+        <p className="font-semibold text-(--color-foreground)">{summary.title}</p>
+        <p className="text-sm text-(--color-muted-foreground)">{summary.detail}</p>
+      </div>
+      {completeness < 100 ? (
+        <Link
+          id="data-trust-profile-link"
+          to="/profile"
+          className="text-sm font-semibold text-(--color-primary) underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-ring)"
+        >
+          Open Profile
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
 export function DataTrustPanel({ state }: { state: FireOSState }) {
   const sync = useStore(syncStatusStore);
   const market = useStore(marketRefreshStatusStore);
@@ -104,6 +161,7 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
     <section aria-label="Data quality and sync status">
       <Card className="flex flex-col gap-2">
         <CardTitle>Data quality</CardTitle>
+        <TrustSummary staleCount={staleCount} completeness={completeness} market={market} />
         <TrustRow label="Quality">
           {staleCount === 0 ? 'Current' : `${staleCount} stale source${staleCount === 1 ? '' : 's'}`}
         </TrustRow>
@@ -138,6 +196,19 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
         <TrustRow label="Completeness">
           {`${completeness}% • Liabilities ${formatCurrency(liabilities, 0)}`}
         </TrustRow>
+        <div
+          role="progressbar"
+          aria-label="Profile completeness"
+          aria-valuenow={completeness}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="h-2 w-full overflow-hidden rounded-full bg-(--color-muted)"
+        >
+          <div
+            className="h-full rounded-full bg-(--color-accent) transition-[width] duration-300 motion-reduce:transition-none"
+            style={{ width: `${completeness}%` }}
+          />
+        </div>
       </Card>
     </section>
   );

@@ -54,6 +54,11 @@ test('a fresh guest profile claims no achievements it does not have', async ({ p
   await page.goto('/dashboard');
   const dashboard = page.locator('#dashboard');
   await expect(dashboard.getByText('Data quality')).toBeVisible();
+  await expect(dashboard.locator('#data-trust-summary')).toContainText('Complete your profile');
+  await expect(dashboard.locator('#data-trust-profile-link')).toHaveAttribute('href', '/profile');
+  await expect(
+    dashboard.getByRole('progressbar', { name: 'Profile completeness' }),
+  ).toHaveAttribute('aria-valuenow', '0');
 
   await expect(dashboard.getByText('FI Goal Progress')).toBeVisible();
   await expect(dashboard.getByText('Set an FI target to track progress')).toBeVisible();
@@ -66,7 +71,7 @@ test('a fresh guest profile claims no achievements it does not have', async ({ p
 
 test('leaves exactly one active container when navigating away and back', async ({ page }) => {
   await page.goto('/dashboard');
-  await page.getByRole('link', { name: 'Profile' }).click();
+  await page.getByRole('link', { name: 'Profile', exact: true }).click();
   await expect(page.locator('#profile.active')).toBeVisible();
   await expect(page.locator('#dashboard')).toHaveCount(0);
 
