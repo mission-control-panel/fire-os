@@ -65,6 +65,22 @@ describe('XIRR calculations', () => {
 
     expect(result.funds[0].xirr).not.toBeNull();
     expect(result.totalXIRR).toBe(result.funds[0].xirr);
+    expect(result.totalXIRRProvenance).toBe('estimated-sip');
+  });
+
+  it('uses combined dated ledger flows instead of averaging fund XIRRs', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+    const state = initializeState();
+    state.sip = { fund: { name: 'Fund', schemeCode: '123', units: 10, startDate: '2024-01', monthlyAmount: 1_000 } };
+    state.nav = { '123': { schemeCode: '123', nav: 150, timestamp: '2025-01-01T00:00:00Z', ttl: 3_600_000 } };
+    state.transactionLedger.transactions = [
+      { id: 'buy', dedupKey: 'buy', date: '2024-01-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund', amountPaise: 100_000, costProvenance: 'exact' },
+      { id: 'dividend', dedupKey: 'dividend', date: '2024-07-01', type: 'dividend', accountId: 'brokerage', instrumentId: 'fund', amountPaise: 10_000, costProvenance: 'exact' },
+    ];
+    const result = sipStatus(state);
+    expect(result.totalXIRRProvenance).toBe('actual-ledger');
+    expect(result.totalXIRR).not.toBeNull();
   });
 });
 

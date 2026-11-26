@@ -195,6 +195,7 @@ export interface SIPStatusKPI {
   totalCurrentValue: number;
   totalPL: number | null;
   totalXIRR: number | null;
+  totalXIRRProvenance: 'actual-ledger' | 'estimated-sip' | 'unavailable';
   funds: Array<{
     key: string;
     name: string;
@@ -211,9 +212,6 @@ export function sipStatus(state: FireOSState): SIPStatusKPI {
   const funds: SIPStatusKPI['funds'] = [];
   let totalInvested = 0;
   let totalCurrentValue = 0;
-  let totalXIRR: number | null = null;
-  let xiirrCount = 0;
-  let xirrSum = 0;
   const coverage = emptyCoverage();
 
   Object.entries(state.sip).forEach(([key, fund]) => {
@@ -254,16 +252,8 @@ export function sipStatus(state: FireOSState): SIPStatusKPI {
     totalInvested += invested;
     if (currentValue !== null) totalCurrentValue += currentValue;
 
-    if (xirr !== null) {
-      xirrSum += xirr;
-      xiirrCount++;
-    }
   });
-
-  // Average XIRR if we have any
-  if (xiirrCount > 0) {
-    totalXIRR = xirrSum / xiirrCount;
-  }
+  const portfolioXirr = calculatePortfolioXirr(state, funds);
 
   coverage.unpricedHoldings = coverage.totalHoldings - coverage.pricedHoldings;
   coverage.coveragePercent = coverage.totalHoldings > 0 ? (coverage.pricedHoldings / coverage.totalHoldings) * 100 : 100;
@@ -275,10 +265,47 @@ export function sipStatus(state: FireOSState): SIPStatusKPI {
     totalInvested: isFinite(totalInvested) ? totalInvested : 0,
     totalCurrentValue: isFinite(totalCurrentValue) ? totalCurrentValue : 0,
     totalPL: totalPL !== null && isFinite(totalPL) ? totalPL : null,
-    totalXIRR,
+    totalXIRR: portfolioXirr.rate,
+    totalXIRRProvenance: portfolioXirr.provenance,
     funds,
     valuation: coverage,
   };
+}
+
+function calculatePortfolioXirr(
+  state: FireOSState,
+  funds: SIPStatusKPI['funds'],
+): { rate: number | null; provenance: SIPStatusKPI['totalXIRRProvenance'] } {
+  const ledgerFlows: CashFlow[] = [];
+  for (const transaction of state.transactionLedger?.transactions ?? []) {
+    const date = new Date(`${transaction.date}T00:00:00Z`);
+    if (!isValid(date)) continue;
+    const amount = transaction.amountPaise / 100;
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    if (transaction.type === 'purchase' || transaction.type === 'opening_balance' || transaction.type === 'fee') ledgerFlows.push({ date, amount: -amount });
+    if (transaction.type === 'sale' || transaction.type === 'dividend' || transaction.type === 'interest') ledgerFlows.push({ date, amount });
+  }
+
+  if (ledgerFlows.length > 0) {
+    const currentValue = funds.reduce((sum, fund) => sum + (fund.currentValue ?? 0), 0);
+    if (funds.some((fund) => fund.currentValue === null) || currentValue <= 0) return { rate: null, provenance: 'unavailable' };
+    ledgerFlows.push({ date: new Date(), amount: currentValue });
+    return { rate: calculateXirr(ledgerFlows), provenance: 'actual-ledger' };
+  }
+
+  const estimatedFlows: CashFlow[] = [];
+  for (const fund of funds) {
+    const source = state.sip[fund.key];
+    if (!source || source.monthlyAmount <= 0 || fund.currentValue === null || !/^\d{4}-\d{2}/.test(source.startDate)) continue;
+    const start = parse(source.startDate.slice(0, 7), 'yyyy-MM', new Date(2000, 0, 1));
+    if (!isValid(start)) continue;
+    const months = Math.max(1, differenceInCalendarMonths(new Date(), start) + 1);
+    for (let index = 0; index < months; index += 1) estimatedFlows.push({ date: addMonths(start, index), amount: -source.monthlyAmount });
+  }
+  const currentValue = funds.reduce((sum, fund) => sum + (fund.currentValue ?? 0), 0);
+  if (currentValue <= 0 || funds.length === 0 || funds.some((fund) => fund.currentValue === null)) return { rate: null, provenance: 'unavailable' };
+  estimatedFlows.push({ date: new Date(), amount: currentValue });
+  return { rate: calculateXirr(estimatedFlows), provenance: 'estimated-sip' };
 }
 
 function calculateSipXirr(startDate: string, monthlyAmount: number, currentValue: number): number | null {
