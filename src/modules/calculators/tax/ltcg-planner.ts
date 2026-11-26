@@ -1,7 +1,7 @@
 import { differenceInCalendarMonths, isValid, parse } from 'date-fns';
 import type { FireOSState } from '../../../types/state';
-import { reconcileLedgerLots } from '../../../lib/transaction-ledger';
-import { calculateTaxLotPlan, CURRENT_INDIAN_CAPITAL_GAINS_RULES, financialYearFor, type TaxLot, type TaxLotHarvestPlan } from './tax-lot-engine';
+import { reconcileLedgerLots, type LedgerLot, type LedgerTransaction } from '../../../lib/transaction-ledger';
+import { calculateTaxLotPlan, CURRENT_INDIAN_CAPITAL_GAINS_RULES, financialYearFor, type TaxLot, type TaxLotDisposal, type TaxLotHarvestPlan } from './tax-lot-engine';
 
 export interface FundHarvestRecommendation {
   fundKey: string;
@@ -34,15 +34,26 @@ export interface TaxHarvestPlan {
   assumptions: string[];
 }
 
-function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; hasSource: boolean; reconciled: boolean; hasCurrentLots: boolean } {
+function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; realizedLots: TaxLot[]; disposals: TaxLotDisposal[]; hasSource: boolean; reconciled: boolean; hasCurrentLots: boolean } {
   const ledger = state.transactionLedger;
-  if (!ledger?.lots?.length && !ledger?.transactions?.length) return { lots: [], hasSource: false, reconciled: false, hasCurrentLots: false };
+  if (!ledger?.lots?.length && !ledger?.transactions?.length) return { lots: [], realizedLots: [], disposals: [], hasSource: false, reconciled: false, hasCurrentLots: false };
   const lots: TaxLot[] = [];
+  const realizedLots: TaxLot[] = [];
+  const disposals: TaxLotDisposal[] = [];
   let currentLots;
   try {
-    currentLots = ledger.transactions.length > 0 ? reconcileLedgerLots(ledger) : ledger.lots;
+    currentLots = ledger.transactions.length > 0
+      ? reconcileLedgerLots(ledger, (transaction: LedgerTransaction, consumed: LedgerLot[]) => {
+        const quantity = transaction.quantityMicros ?? 0;
+        const salePrice = quantity > 0 ? (transaction.amountPaise / 100) / (quantity / 1_000_000) : 0;
+        for (const lot of consumed) {
+          realizedLots.push({ id: lot.id, fundKey: lot.instrumentId, fundName: lot.instrumentId, assetClass: 'equity-mutual-fund', acquiredDate: lot.acquiredDate, units: lot.quantityMicros / 1_000_000, costBasis: lot.costPaise / 100, currentNAV: 0, dataQuality: lot.costProvenance === 'exact' ? 'exact' : 'estimated' });
+          disposals.push({ lotId: lot.id, saleDate: transaction.date, units: lot.quantityMicros / 1_000_000, salePrice });
+        }
+      })
+      : ledger.lots;
   } catch {
-    return { lots: [], hasSource: true, reconciled: false, hasCurrentLots: false };
+    return { lots: [], realizedLots: [], disposals: [], hasSource: true, reconciled: false, hasCurrentLots: false };
   }
   for (const [fundKey, fund] of Object.entries(state.sip || {})) {
     if (!fund) continue;
@@ -71,7 +82,7 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; h
       });
     }
   }
-  return { lots, hasSource: true, reconciled: true, hasCurrentLots: currentLots.length > 0 };
+  return { lots, realizedLots, disposals, hasSource: true, reconciled: true, hasCurrentLots: currentLots.length > 0 };
 }
 
 function emptyLedgerPlan(state: FireOSState): TaxHarvestPlan {
@@ -179,6 +190,9 @@ export function calculateLTCGHarvestPlan(
 ): TaxHarvestPlan {
   const ledgerState = ledgerLotsForState(state, now);
   if (ledgerState.hasSource && !ledgerState.reconciled) return unavailableLedgerPlan(state, 'The transaction ledger could not be reconciled; the result is unavailable.');
+  if (ledgerState.disposals.some((disposal) => disposal.saleDate < CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom)) {
+    return unavailableLedgerPlan(state, 'Historical disposals predate the versioned tax rules available to this planner.');
+  }
   if (ledgerState.reconciled && ledgerState.hasSource && ledgerState.lots.length === 0) {
     return ledgerState.hasCurrentLots
       ? unavailableLedgerPlan(state, 'Current ledger holdings could not be matched to complete, fresh valuations.')
@@ -191,6 +205,8 @@ export function calculateLTCGHarvestPlan(
       lots: ledgerState.lots,
       asOf: now,
       lastHarvestedAmount: harvestedAmountForYear(state, now),
+      realizedDisposals: ledgerState.disposals,
+      realizedLots: ledgerState.realizedLots,
       rules,
     }), state);
   }

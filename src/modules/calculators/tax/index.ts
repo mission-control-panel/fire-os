@@ -31,6 +31,7 @@ export function renderTax(container?: HTMLElement, context: FeatureContext = act
     };
   }
   const plan = calculateLTCGHarvestPlan(D);
+  const displayAmount = (value: number) => plan.dataQuality === 'unknown' ? 'Unavailable' : formatCurrency(value);
 
   // 2. 80C Tracker Calculations
   const storedEpf = localStorage.getItem('epf_annual_contribution');
@@ -58,21 +59,21 @@ export function renderTax(container?: HTMLElement, context: FeatureContext = act
         <div class="metric-grid">
           <div class="metric-card">
             <div class="metric-label">Total Unrealized Gains</div>
-            <div class="metric-value">${formatCurrency(plan.totalLtcgGains)}</div>
+            <div class="metric-value">${displayAmount(plan.totalLtcgGains)}</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Remaining Exemption Limit</div>
-            <div class="metric-value" id="ltcg-remaining-limit">${formatCurrency(plan.remainingLimit)}</div>
-            <div class="metric-subtext" id="ltcg-limit-subtext">Out of ${formatCurrency(plan.taxExemption)} annual limit</div>
+            <div class="metric-value" id="ltcg-remaining-limit">${displayAmount(plan.remainingLimit)}</div>
+            <div class="metric-subtext" id="ltcg-limit-subtext">Out of ${displayAmount(plan.taxExemption)} annual limit</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Recommended Harvest</div>
-            <div class="metric-value">${formatCurrency(plan.totalRecommendedHarvest)}</div>
+            <div class="metric-value">${displayAmount(plan.totalRecommendedHarvest)}</div>
             <div class="metric-subtext">Estimated value to sell</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Tax Saved</div>
-            <div class="metric-value">${formatCurrency(plan.totalRecommendedHarvestGain * plan.taxRate)}</div>
+            <div class="metric-value">${displayAmount(plan.totalRecommendedHarvestGain * plan.taxRate)}</div>
             <div class="metric-subtext">${(plan.taxRate * 100).toFixed(1)}% planning estimate</div>
           </div>
         </div>

@@ -301,6 +301,7 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
     return { costPaise: consumedCost, costProvenance: provenance };
   };
   const transferCosts = new Map<string, { quantityMicros: number; costPaise: number; costProvenance: CostProvenance }>();
+  const transferSources = new Map<string, LedgerTransaction>();
   const transactions = [...ledger.transactions].sort((a, b) => {
     const dateOrder = a.date.localeCompare(b.date);
     if (dateOrder !== 0) return dateOrder;
@@ -314,9 +315,13 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
     if (transaction.type === 'transfer_out') {
       const consumed = consumeLots(transaction, quantity);
       transferCosts.set(transaction.id, { quantityMicros: quantity, ...consumed });
+      transferSources.set(transaction.id, transaction);
     }
     if (transaction.type === 'transfer_in') {
+      if (transaction.linkedTransactionId && !transferCosts.has(transaction.linkedTransactionId)) throw new Error(`Missing linked transfer-out for ${transaction.id}`);
       const carried = transaction.linkedTransactionId ? transferCosts.get(transaction.linkedTransactionId) : undefined;
+      const source = transaction.linkedTransactionId ? transferSources.get(transaction.linkedTransactionId) : undefined;
+      if (source && source.instrumentId !== transaction.instrumentId) throw new Error(`Linked transfer instrument mismatch for ${transaction.id}`);
       if (carried) {
         const incomingQuantity = transaction.quantityMicros === undefined ? carried.quantityMicros : quantity;
         if (incomingQuantity > carried.quantityMicros) throw new Error(`Transfer-in quantity exceeds linked transfer for ${transaction.id}`);
@@ -348,9 +353,10 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
  * trusting an imported snapshot of `ledger.lots`, which may still contain
  * units consumed by later sales or transfers.
  */
-export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
+export function reconcileLedgerLots(ledger: TransactionLedger, onSale?: (transaction: LedgerTransaction, lots: LedgerLot[]) => void): LedgerLot[] {
   const queues = new Map<string, LedgerLot[]>();
   const transferred = new Map<string, LedgerLot[]>();
+  const transferSources = new Map<string, LedgerTransaction>();
   const key = (transaction: LedgerTransaction) => `${transaction.accountId}|${transaction.instrumentId || ''}`;
   const add = (transaction: LedgerTransaction, quantityMicros: number, costPaise: number, costProvenance: CostProvenance, acquiredDate = transaction.date, suffix = '') => {
     if (!transaction.instrumentId || quantityMicros <= 0) return;
@@ -366,7 +372,7 @@ export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
       const lot = queue[0];
       const consumed = Math.min(remaining, lot.quantityMicros);
       const cost = lot.quantityMicros === consumed ? lot.costPaise : Math.round(lot.costPaise * consumed / lot.quantityMicros);
-      consumedLots.push({ ...lot, id: `${lot.id}:consumed`, quantityMicros: consumed, costPaise: cost });
+      consumedLots.push({ ...lot, id: lot.id, quantityMicros: consumed, costPaise: cost });
       lot.quantityMicros -= consumed;
       lot.costPaise -= cost;
       remaining -= consumed;
@@ -386,9 +392,15 @@ export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
   for (const transaction of transactions) {
     const quantity = transaction.quantityMicros ?? 0;
     if (transaction.type === 'purchase' || transaction.type === 'opening_balance') add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
-    if (transaction.type === 'sale') consume(transaction);
-    if (transaction.type === 'transfer_out') transferred.set(transaction.id, consume(transaction));
+    if (transaction.type === 'sale') onSale?.(transaction, consume(transaction));
+    if (transaction.type === 'transfer_out') {
+      transferred.set(transaction.id, consume(transaction));
+      transferSources.set(transaction.id, transaction);
+    }
     if (transaction.type === 'transfer_in') {
+      if (transaction.linkedTransactionId && !transferred.has(transaction.linkedTransactionId)) throw new Error(`Missing linked transfer-out for ${transaction.id}`);
+      const source = transaction.linkedTransactionId ? transferSources.get(transaction.linkedTransactionId) : undefined;
+      if (source && source.instrumentId !== transaction.instrumentId) throw new Error(`Linked transfer instrument mismatch for ${transaction.id}`);
       const carried = transaction.linkedTransactionId ? transferred.get(transaction.linkedTransactionId) : undefined;
       if (transaction.linkedTransactionId && transferred.has(transaction.linkedTransactionId)) {
         const linkedLots = carried ?? [];

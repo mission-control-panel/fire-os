@@ -114,6 +114,7 @@ export function calculateTaxLotPlan(input: {
   asOf: Date;
   lastHarvestedAmount?: number;
   realizedDisposals?: TaxLotDisposal[];
+  realizedLots?: TaxLot[];
   rules?: TaxRuleSet;
 }): TaxLotHarvestPlan {
   const rules = input.rules ?? CURRENT_INDIAN_CAPITAL_GAINS_RULES;
@@ -151,13 +152,15 @@ export function calculateTaxLotPlan(input: {
     ? Math.max(0, rules.section112aExemption - lastHarvested)
     : null;
   const realized = (input.realizedDisposals ?? []).reduce((totals, disposal) => {
-    const lot = input.lots.find(candidate => candidate.id === disposal.lotId);
+    const lot = [...input.lots, ...(input.realizedLots ?? [])].find(candidate => candidate.id === disposal.lotId);
     if (!lot || !finiteNonNegative(disposal.units) || disposal.units <= 0 || disposal.units > lot.units || !finiteNonNegative(disposal.salePrice)) return totals;
     const gain = disposal.units * disposal.salePrice - lot.costBasis * (disposal.units / lot.units) - (disposal.fees ?? 0);
     if (gain >= 0) totals.gains += gain;
     else totals.losses += Math.abs(gain);
     return totals;
   }, { gains: 0, losses: 0 });
+
+  const netRealizedGain = Math.max(0, realized.gains - realized.losses);
 
   return {
     status: exact ? 'available' : 'estimated',
@@ -169,7 +172,7 @@ export function calculateTaxLotPlan(input: {
     totalStcgGains,
     totalRealizedGains: realized.gains,
     totalRealizedLosses: realized.losses,
-    remainingExemption,
+    remainingExemption: remainingExemption === null ? null : Math.max(0, remainingExemption - netRealizedGain),
     lots: results,
     assumptions: [
       'Gains are estimates before surcharge, cess, set-off rules and filing-specific exemptions.',
