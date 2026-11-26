@@ -1,5 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { calculateXirr } from './calculations';
+import { calculateXirr, crashProtocol, emergencyRunway, fiGoalProgress, sipCorpus, sipCostBasis, sipPauseImpact } from './calculations';
+
+describe('canonical SIP math', () => {
+  it('matches zero-rate and one-year reference vectors', () => {
+    expect(sipCorpus(1000, 0, 1)).toBe(12000);
+    expect(sipCostBasis(1000, 12)).toBe(12000);
+    expect(sipCorpus(1000, 0.12, 1)).toBeCloseTo(12_682.5, 1);
+  });
+
+  it('rejects negative and non-finite inputs without producing fabricated values', () => {
+    expect(sipCorpus(-1000, 0.12, 1)).toBe(0);
+    expect(sipCorpus(1000, 0.12, Number.NaN)).toBe(0);
+    expect(sipCostBasis(1000, -12)).toBe(0);
+    expect(emergencyRunway(100_000, -1)).toBe(999);
+  });
+
+  it('calculates pause cost from bounded whole-month horizons', () => {
+    expect(sipPauseImpact(1000, 0, 0.12)).toEqual({ missedContributions: 0, lostGrowth: 0, totalCost: 0 });
+    expect(sipPauseImpact(1000, 3.9, 0)).toEqual({ missedContributions: 3000, lostGrowth: 0, totalCost: 3000 });
+    expect(sipPauseImpact(1000, 12, -0.12).totalCost).toBeGreaterThanOrEqual(12_000);
+    expect(sipCorpus(1000, 10, 100)).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it('keeps crash and FI boundary vectors finite and non-negative', () => {
+    expect(crashProtocol(-1000, 0, 100)).toEqual({ drawdownPercent: 0, deployAmount10: 0, deployAmount15: 0, deployAmount25: 0 });
+    expect(fiGoalProgress(-1000, -500)).toEqual({ fiTarget: 0, progressPercent: 0, yearsRemaining: 0 });
+    expect(fiGoalProgress(2500000, 100000)).toMatchObject({ fiTarget: 2500000, progressPercent: 100, yearsRemaining: 0 });
+  });
+});
 
 describe('calculateXirr', () => {
   it('matches a known annualized result for irregular dated flows', () => {

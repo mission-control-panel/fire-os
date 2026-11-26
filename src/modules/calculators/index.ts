@@ -9,6 +9,7 @@ import './styles.css';
 import { initTaxModule } from './tax';
 import { executeMonthlyWithdrawal, DEFAULT_FUND_BUCKETS, calculateFIFORedemption } from './swp-scheduler';
 import { compareFIScenarios, type FIScenarioInput, type FIScenarioResult } from './scenario-modeler';
+import { emergencyRunway, sipPauseImpact } from '../../lib/calculations';
 
 let activeContext = createFeatureContext();
 let D = activeContext.state;
@@ -185,7 +186,7 @@ function renderEmergencyRunway(): string {
   const buffer = 0; // From profile if added
 
   const liquidAssets = mfValue + fdValue + buffer;
-  const runwayMonths = monthlyExpenses > 0 ? Math.floor(liquidAssets / monthlyExpenses) : 0;
+  const runwayMonths = Math.floor(emergencyRunway(liquidAssets, monthlyExpenses));
 
   return `
     <div class="calc-card">
@@ -461,10 +462,11 @@ function calculateSIPPause() {
   const months = parseInt(pauseInput?.value || '0') || 0;
   const annualReturn = parseFloat(returnInput?.value || '12') || 12;
 
-  const missedAmount = monthly * months;
-  const monthlyReturn = annualReturn / 12 / 100;
-  const lostGrowth = missedAmount * monthlyReturn * 12; // Approximate 12 months of growth
-  const totalCost = missedAmount + lostGrowth;
+  const { missedContributions: missedAmount, lostGrowth, totalCost } = sipPauseImpact(
+    monthly,
+    months,
+    annualReturn / 100,
+  );
 
   const resultDiv = document.getElementById('sip-result');
   if (resultDiv) {
