@@ -12,6 +12,7 @@ test('starts in guest mode and exposes every dashboard section', async ({ page }
     'calculators',
     'insurance',
     'plan',
+    'goals',
     'esop',
     'assistant',
   ]) {
@@ -19,6 +20,13 @@ test('starts in guest mode and exposes every dashboard section', async ({ page }
     await expect(page.locator(`#${section}.active`)).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`/${section}$`));
   }
+
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page');
+  await page.goto('/profile');
+  await expect(page.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page');
+  await page.goto('/dashboard');
+  await expect(page.getByRole('link', { name: 'Profile' })).not.toHaveAttribute('aria-current');
 });
 
 test('loads the authenticated portfolio when credentials are provided', async ({ page }) => {
@@ -55,6 +63,22 @@ test('keeps profile controls usable on a narrow viewport', async ({ page }) => {
   await page.locator('.delete-liability-btn').click();
   await expect(page.locator('#liability-name-1')).toHaveCount(0);
   await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 390);
+});
+
+test('closes the mobile navigation after keyboard route selection', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/profile');
+
+  const menu = page.locator('details').first();
+  const summary = menu.locator('summary');
+  await expect(summary).toHaveAttribute('aria-controls', 'mobile-primary-navigation');
+  await summary.press('Enter');
+  await expect(menu).toHaveJSProperty('open', true);
+
+  await menu.getByRole('link', { name: 'Dashboard' }).press('Enter');
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(menu).toHaveJSProperty('open', false);
+  await expect(summary).toBeFocused();
 });
 
 test('downloads a portfolio CSV from Profile', async ({ page }) => {

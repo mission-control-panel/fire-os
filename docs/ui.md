@@ -20,9 +20,10 @@ Nanostores atoms to components through `useSyncExternalStore`, and
 
 **Sidebar navigation.** Persistent from the `lg` breakpoint up; below it the
 sidebar is an off-canvas drawer driven by a native `<details>` disclosure, so no
-JS state is involved. Links are `NavLink`s, so the active route carries
-`aria-current="page"` automatically. Accessible names are exactly Profile,
-Dashboard, Calculators, Insurance, Plan, ESOP and Assistant — the e2e specs
+JS state is involved. Exact-match routes use `NavLink`; Profile uses an
+alias-aware `Link` because `/profile` maps to `/`. The active route carries
+`aria-current="page"`. Accessible names are exactly Profile, Dashboard,
+Calculators, Insurance, Plan, Goals, ESOP and Assistant — the e2e specs
 locate several of them by role and name. Every interactive element carries a
 `:focus-visible` outline.
 
@@ -370,6 +371,12 @@ Other UI still listens for auth/profile DOM events; offline
 status is browser connectivity, not proof a queued remote write has
 completed. Build/type checks: `npm run build`; format/lint: `npm run format:check`,
 `npm run lint`; unit tests: `npm test`; browser workflows: `npm run test:e2e`.
+
+The React shell uses separate desktop and mobile primary-navigation landmarks so
+the legacy route IDs remain unique. On narrow screens the native disclosure is
+keyboard-operable, exposes its controlled navigation landmark, closes after a
+route is selected, and returns focus to its summary. The Profile link is marked
+active only for `/` and `/profile`, not for descendant routes.
 
 ## Profile: field lifecycle and data-management workflows
 
