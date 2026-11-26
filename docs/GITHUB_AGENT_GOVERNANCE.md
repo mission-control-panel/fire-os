@@ -1,19 +1,18 @@
-# AGENTS.md — Solo Developer / Multi-Agent GitHub Operating Contract
+# AGENTS.md — FIRE OS GitHub Evidence and Review Contract
 
-> **Template, version 1.1 — customize the placeholders before use.**
-> Canonical instruction policy for agents in **fire-os** (`Rohan0603/fire-os`).
-> GitHub Project: **NOT CONFIGURED — requires authorized GitHub Project read-back**. Default branch: **main**.
+> **Current FIRE OS precedence (2026-11-26):** Trello is the task-management system of record: <https://trello.com/b/XWDn8Lm0/fire-os>. This document governs GitHub evidence, source control, pull requests, CI, review and release controls; it is not a competing task queue. GitHub Project membership, Status, Priority, milestone and native dependencies remain **NOT VERIFIED** unless explicitly read back.
+> Default branch: **main**.
 > Project owner: **one human developer**; implementation and review may use different AI agents/models.
-> This single root `AGENTS.md` is the complete, canonical agent operating contract. It is not a separate backlog or task source.
+> The root `AGENTS.md` is the active operating contract. This document is the supporting GitHub evidence and review contract.
 
 ## 1. Mandatory authority and first actions
 
-**GitHub Projects v2 is the authoritative workflow-status board and normal execution queue. Agents are invoked or scheduled by the human owner, not by GitHub labels, issue changes, Actions workflows, or a central dispatcher.** A narrowly scoped, explicitly marked **metadata-only bootstrap** exception permits an independently invoked Worker to add an as-yet-unprojected issue and complete other missing GitHub metadata. This exception does **not** authorize product implementation or pretend the Project Status is `Ready`. GitHub Issues linked to that Project are the authoritative individual task specifications and histories. GitHub PRs, commits, Actions and versioned repository documents are supporting technical evidence. GitHub Discussions may host exploration, never hidden or independent work queues. Do not rely on Linear, chat history, local TODO files, memory, or a parallel kanban system as the task source.
+**Trello is the authoritative FIRE OS workflow board and execution queue.** Agents are invoked or scheduled by the human owner, not by Trello events, GitHub labels, issue changes, Actions workflows, webhooks or a central dispatcher. Trello cards are the canonical task specifications and histories; each card preserves relevant GitHub source links, dependencies and evidence. GitHub Issues and Projects may retain historical or mirrored metadata, but are not an active competing queue. GitHub PRs, commits, Actions and versioned repository documents remain authoritative supporting engineering evidence. Do not rely on Linear, chat history, local TODO files or memory as the task source.
 
 Before any work, every agent MUST (whether launched from Codex, OpenCode, ChatGPT Work, a custom orchestrator, or another tool):
 
-1. Read this policy, establish its explicit role (`chief` or `worker`), and query **NOT CONFIGURED — requires authorized GitHub Project read-back live**, including *all pages*, filtered by its authorized route **except for an explicitly authorized `worker + metadata-bootstrap` pre-Project task (see §4 bootstrap rules and §12)**. Read the target issue body, recent comments, labels, current Project **Status**, dependencies/sub-issues, linked decisions and PRs. Avoid acting on stale cached views.
-2. Confirm the target is a **repository-backed GitHub Issue in the designated Project**, not a Project draft; for `metadata-bootstrap` the Project membership may be **NOT VERIFIED** and the only permitted work is to verify/add it and the other specifically delegated metadata. Convert drafts to issues before starting work. Do not start from an untracked user request: Chief records it as a Project-linked issue first (except emergency containment; see section 10).
+1. Read the target Trello card, its complete description, comments, checklists, dependencies, current list and active claims; establish the explicit role (`chief` or `worker`) and Definition of Ready. Read linked GitHub Issues, PRs, commits and Actions as supporting evidence, avoiding stale cached views.
+2. Confirm the task has one canonical Trello card and a preserved source link. GitHub Project membership, Status, Priority and native dependencies are **NOT VERIFIED** unless the authorized Project API is read back; do not infer readiness from their absence or from a GitHub issue search result.
 3. Inspect latest default-branch HEAD and relevant project build/test commands and architecture constraints; identify existing tests, open PRs and potential overlapping worktrees.
 4. Validate the role-label invariant and permissions before changing anything. If API access is missing, report **NOT VERIFIED**, not success.
 

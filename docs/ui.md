@@ -180,6 +180,14 @@ value on now; total XIRR is the simple mean of fund XIRRs. FI target is user
 entry; progress is current net worth / target (0 when no target), with years
 remaining only when already achieved. Drawdown is max(0, `(high-level)/high`).
 
+### Goals — `src/app/routes/goals-wizard.tsx`
+
+Goals is a migrated React route. The form requires a named goal, a target
+strictly above ₹10, a `YYYY-MM` target month, and a priority of at least 1;
+validation is rendered inline rather than through browser-native bubbles.
+Submitted goals preserve the optional monthly contribution and render as a
+table row with Indian currency formatting, funding progress and shortfall.
+
 ### Planning Tools — `src/modules/calculators/`
 
 - **Crash Protocol:** bonds are the initial crash fund; displays 10%, 15%, and

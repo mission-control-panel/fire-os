@@ -54,7 +54,7 @@ export function GoalForm({
     // assumptions are entered.
     const next: GoalFormErrors = {};
     if (!name.trim()) next.name = 'Give the goal a name so you can recognise it later.';
-    if (!targetToday || Number(targetToday) <= 0) next.targetToday = 'Enter a target above ₹0.';
+    if (!targetToday || Number(targetToday) <= 10) next.targetToday = 'Enter a target above ₹10.';
     if (!/^\d{4}-\d{2}$/.test(targetDate)) next.targetDate = 'Pick a target month.';
     if (!priority || Number(priority) < 1) next.priority = 'Priority starts at 1.';
 
@@ -67,6 +67,7 @@ export function GoalForm({
       kind,
       targetToday: Number(targetToday),
       targetDate,
+      monthlyContribution: monthlyContribution ? Number(monthlyContribution) : undefined,
       inflation: 'cpi',
       linkedAssetIds: initialGoal?.linkedAssetIds ?? [],
       currentAmount: initialGoal?.currentAmount ?? 0,
@@ -99,7 +100,7 @@ export function GoalForm({
           label="Target amount (₹)"
           type="number"
           inputMode="numeric"
-          min="0"
+          min="10"
           step="10000"
           value={targetToday}
           onChange={(e) => setTargetToday(e.target.value)}

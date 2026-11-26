@@ -5,7 +5,8 @@ product guidance here. Put release notes in [CHANGELOG.md](CHANGELOG.md).
 
 ## Backlog
 
-- [TODO and brainstorm](../TODO.md)
+- [FIRE OS Trello board](https://trello.com/b/XWDn8Lm0/fire-os) — canonical task-management system of record.
+- [TODO and brainstorm](../TODO.md) — historical/product notes only; not an active queue.
 
 ## Technical references
 
@@ -178,7 +179,10 @@ no jsdom or Testing Library. It covers route resolution and the
 focus behaviour (`shell.spec.ts`), per-route metadata and guest-mode boot at a
 deep URL (`meta-and-guards.spec.ts`), and the OKLCH tokens resolving in both
 colour schemes (`theme.spec.ts`), alongside the original `portfolio.spec.ts` and
-`assistant.spec.ts`.
+`assistant.spec.ts`. CI runs the guest suite with Firebase unset, then runs
+`auth.spec.ts` separately with configured Firebase variables; local runs with a
+private `.env` should use the same two modes rather than treating configured-auth
+failures as guest regressions.
 
 Note: hosting is still Firebase Hosting. The planned move to Cloudflare Workers
 has not happened yet; do not assume a Workers deploy path exists.
@@ -197,11 +201,9 @@ the script. A local Vite preview does not apply Firebase Hosting headers.
 
 ### Starting work
 
-1. Check existing AO sessions: `ao session ls --project fire-os`.
-2. If no suitable active worker exists, spawn one:
-   `ao spawn --project fire-os --name "<label>" --prompt "<clear task description>"`
-   — add `--agent <name>` or `--model <id>` as needed.
-3. Never claim a PR into the orchestrator session. If a PR needs continuation, assign or spawn a worker.
+1. Open the linked Trello card and verify its scope, dependencies, route, acceptance criteria and current claim/list. Do not start from a repository search or an untracked request.
+2. Record a unique, bounded claim on the card before changing its list to `In Progress`; release or renew the claim explicitly.
+3. Use GitHub for branches, commits, pull requests, code review and CI evidence. Do not automatically launch an agent from Trello, GitHub, webhooks or Actions.
 
 ### Common checks before committing
 

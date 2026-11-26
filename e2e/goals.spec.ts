@@ -56,9 +56,9 @@ test.describe('goals route', () => {
     await expect(row).toBeVisible();
 
     // Figures render through the Indian ₹ formatter (crore above 10M), not raw
-    // toLocaleString. Target and Shortfall are both ₹12Cr, so scope to the column.
-    await expect(row.getByRole('cell', { name: '₹12Cr', exact: true }).first()).toBeVisible();
-    await expect(row.getByRole('cell', { name: '₹10', exact: true })).toBeVisible();
+    // toLocaleString. The entered target is ₹2Cr and the new goal starts at ₹0.
+    await expect(row.getByRole('cell', { name: '₹2Cr', exact: true }).first()).toBeVisible();
+    await expect(row.getByRole('cell', { name: '₹0', exact: true })).toBeVisible();
     await expect(
       row.getByRole('progressbar', { name: 'Coorg house funding progress' }),
     ).toHaveAttribute('aria-valuenow', '0');

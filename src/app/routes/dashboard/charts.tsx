@@ -307,7 +307,7 @@ export function FiGoalCard({ state }: { state: FireOSState }) {
             ? 'FI achieved'
             : safeFiTarget > 0
               ? `${formatCurrency(remaining, 0)} remaining`
-              : 'Set an FI target to track progress'}
+              : 'No FI target set — Set an FI target to track progress'}
         </p>
       </div>
     </ChartCard>

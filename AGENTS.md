@@ -1,13 +1,13 @@
-# Current GitHub Chief/Worker development governance — fire-os (2026-11-09)
+# Current Trello Chief/Worker development governance — fire-os (2026-11-26)
 
-> **Current tracking/routing precedence:** GitHub development-issue policy below supersedes contradictory legacy tracking and automatic-agent-launch instructions later in this file. **Product-specific architecture, quality, validation, safety and security constraints remain binding.** Preserve FIRE OS architecture, user privacy, finance math, Vitest/Playwright, Firebase deployment controls and current CI. In particular, the legacy 'ao spawn' issue-onboarding instruction below is superseded: do not automatically launch a Worker/agent; the owner invokes sessions independently.
+> **Current tracking/routing precedence:** Trello is the FIRE OS task-management system of record. GitHub Issues, Projects, pull requests, commits, Actions and versioned repository documents are supporting engineering evidence; they are not a competing active queue. **Product-specific architecture, quality, validation, safety and security constraints remain binding.** Preserve FIRE OS architecture, user privacy, finance math, Vitest/Playwright, Firebase deployment controls and current CI. No agent is launched automatically; the owner invokes sessions independently.
 
-- Use GitHub Issues and an authorized GitHub Projects v2 board as the intended development work source. This PR does **not** configure/verify Project membership, Status, Priority, milestone, or native dependencies; report these as **NOT VERIFIED**, never infer implementation readiness.
-- Primary route: exactly one `chief` or `worker`; `human` only with `chief`. `metadata-bootstrap` + `worker` allows **metadata operations only**, not implementation. Chief decides Project/Priority/requirements and reviews.
-- Every first handoff includes `GITHUB METADATA SETUP`; missing authorized Project access triggers a bounded `METADATA BOOTSTRAP HANDOFF`, performed by separately owner-invoked Worker with read-back and return to Chief. Implement only after separate Chief DoR and verified Project `Ready`.
-- **No automatic AI-agent invocation** from GitHub labels, issue events, Actions, or legacy orchestration rules. The human chooses and manually/schedules Chief and Worker runs in the desired tool. This policy does not disable the product's own runtime automation.
-- Complete approved protocol: `docs/GITHUB_AGENT_GOVERNANCE.md`; all legacy conflicting task-routing instructions below are historical. Preserve source/testing/documentation constraints in the remainder.
-- Default branch: `main`. This PR changes no application code, branch protections, secrets, Project fields, or existing CI.
+- Use the [FIRE OS Trello board](https://trello.com/b/XWDn8Lm0/fire-os) for task identity, priority, dependencies, claims and workflow status. Keep one canonical card per task, preserve source links and historical evidence, and use `Backlog`, `Ready`, `In Progress`, `Blocked`, `In Review`, `Done` and `Canceled` deliberately.
+- Primary route: exactly one `chief` or `worker`; `human` only with `chief`. A card must have a verified Definition of Ready and an uncontested execution claim before implementation. Chief decides requirements and reviews; Worker implements only the scoped handoff.
+- GitHub remains authoritative for source code, branches, commits, pull requests, code review, CI/CD and releases. GitHub Project membership, Status, Priority, milestone and native dependencies are **NOT VERIFIED** unless explicitly read back; never infer Trello readiness from them.
+- **No automatic AI-agent invocation** from Trello events, GitHub labels/issues/Actions, webhooks or legacy orchestration rules. The human chooses and manually/schedules Chief and Worker runs in the desired tool. This policy does not disable the product's own runtime automation.
+- Complete current protocol: `docs/GITHUB_AGENT_GOVERNANCE.md` (its GitHub evidence and review rules remain binding where compatible); all legacy conflicting task-routing instructions below are historical. Preserve source/testing/documentation constraints in the remainder.
+- Default branch: `main`. This cutover does not change branch protections, secrets, Project fields or existing CI; its implementation changes are limited to the FIRE26-00 browser quality-gate repair and its supporting documentation.
 
 ---
 
@@ -57,13 +57,9 @@
 - Update the relevant detailed reference(s) (`docs/ui.md`, `docs/backend.md`, `docs/ai.md`) with new behavior and remove superseded details. Update `docs/README.md` for setup, operations, or navigation changes and `docs/CHANGELOG.md` when the change belongs in release history.
 - Keep documentation focused: edit existing references instead of duplicating the same facts in new documents. If no documentation update is warranted, state why in the final response.
 
-## Issue onboarding for agents
+## Historical AO onboarding (superseded)
 
-- When starting a new task, first check existing sessions with `ao session ls --project fire-os`.
-- If no suitable active worker exists, spawn a new AO worker with `ao spawn --project fire-os --name "<label>" --prompt "<clear task description>"`.
-- Add `--agent <name>` when a worker must use a specific agent; add `--model <id>` when a specific model is requested (model access, credits, and cost may differ).
-- Never claim a PR into the orchestrator session. If a PR needs continuation, assign or spawn a worker.
-- For freeform work, publish only when the user requests it or explicitly configured project rules authorize it. Preserve the user's publishing scope (local-only, review-only, do-not-publish) when spawning or redirecting workers.
+The former `ao session ls` / `ao spawn` onboarding is retained only as historical context. Do not invoke it automatically. Use the Trello card claim and handoff protocol above, and preserve the user's publishing scope (local-only, review-only, do-not-publish).
 
 ## Working constraints
 

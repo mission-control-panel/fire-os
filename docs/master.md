@@ -61,7 +61,10 @@ change. A route marks progress with `data-migration-state`: while a route is a
 `placeholder` the legacy container keeps the `id` and the `active` class, and
 only a `migrated` route claims them itself. Two elements sharing one id would
 break the `#<id>.active` contract asserted by `e2e/portfolio.spec.ts`. The
-legacy top nav (`#legacy-nav`) is hidden because the React sidebar supersedes
+legacy containers are created under `#legacy-tabs` only for the not-yet-migrated
+routes (`profile`, `calculators`, `insurance`, `plan`, `esop`, `assistant`);
+Dashboard and Goals remain React-owned and are never duplicated in that bridge.
+The legacy top nav (`#legacy-nav`) is hidden because the React sidebar supersedes
 it. `FeatureRegistry` and its test are retired in the final migration PR.
 
 Routes are not session-gated. `profile` and `assistant` both work in guest mode
