@@ -10,6 +10,7 @@
 import type { FireOSState } from '../../types/state';
 import type { NiftyData } from '../../types/api';
 import { totalNetWorth } from '../../modules/dashboard/kpis';
+import { projectDefaultRetirement } from '../../modules/retirement/retirement-engine';
 
 export type BalanceRange = '<1L' | '1–5L' | '5–25L' | '25L–1Cr' | '1Cr+';
 
@@ -51,6 +52,14 @@ export interface SanitizedContext {
   netWorthRange: BalanceRange;
   /** Aggregation confidence; unknown valuations must not be treated as losses. */
   valuation: { coveragePercent: number; unpricedHoldings: number; staleHoldings: number; status: 'complete' | 'partial' };
+  /** Same deterministic retirement engine used by the dashboard, reduced to safe ranges. */
+  retirementProjection: {
+    status: 'projected' | 'already-retired' | 'unreachable' | 'unavailable';
+    uncertainty: 'assumptions' | 'insufficient-data';
+    fireEligibleCorpusRange: BalanceRange;
+    requiredCorpusRange: BalanceRange | 'unavailable';
+    shortfallRange: BalanceRange | 'unavailable';
+  };
   /** Public Nifty 50 market data; null when no valid cached value exists */
   nifty50: NiftyContext | null;
   /** Profile fields that affect advice, masked */
@@ -126,7 +135,7 @@ export function buildContextSummary(
   const age = Number.isFinite(profile.age) ? profile.age : 0;
   const ageBand = age < 30 ? '20s' : age < 40 ? '30s' : age < 50 ? '40s' : '50s+';
 
-  const { netWorth, breakdown, valuation } = totalNetWorth(state);
+  const { netWorth, breakdown, liabilities, valuation } = totalNetWorth(state);
   const monthlySipContribution = Object.values(state.sip).reduce(
     (sum, fund) => sum + (Number.isFinite(fund.monthlyAmount) ? fund.monthlyAmount : 0),
     0,
@@ -146,6 +155,15 @@ export function buildContextSummary(
   const fiTarget = profile.fiTarget ?? 0;
   const monthlyExpenses = profile.annualExpenses ?? 0;
   const annualExpenses = monthlyExpenses * 12;
+  const retirementProjection = projectDefaultRetirement({
+    ...breakdown,
+    liabilities: valuation.hasUnknownValues ? 0 : liabilities,
+    currentAge: age > 0 ? age : 30,
+    annualExpenses,
+    monthlyContribution: monthlySipContribution,
+    taxRate: Math.min(0.99, Math.max(0, (profile.taxSlabRate ?? 0) / 100)),
+    dataComplete: !valuation.hasUnknownValues,
+  });
 
   const context: SanitizedContext = {
     userLabel: 'User',
@@ -159,6 +177,17 @@ export function buildContextSummary(
       unpricedHoldings: valuation.unpricedHoldings,
       staleHoldings: valuation.staleHoldings,
       status: valuation.hasUnknownValues ? 'partial' : 'complete',
+    },
+    retirementProjection: {
+      status: retirementProjection.status,
+      uncertainty: retirementProjection.uncertainty,
+      fireEligibleCorpusRange: bucketBalance(retirementProjection.corpus.netFireEligibleCorpus),
+      requiredCorpusRange: retirementProjection.requiredCorpusAtRetirement === null
+        ? 'unavailable'
+        : bucketBalance(retirementProjection.requiredCorpusAtRetirement),
+      shortfallRange: retirementProjection.shortfallAtRetirement === null
+        ? 'unavailable'
+        : bucketBalance(retirementProjection.shortfallAtRetirement),
     },
     nifty50: sanitizeNiftyData(state.niftyData, now),
     profileMasked: {

@@ -396,6 +396,7 @@ function renderAssumptions(context: SanitizedContext): HTMLElement {
     ['Net worth', context.netWorthRange],
     ['FI target', context.fiTargetRange],
     ['Annual expenses', context.profileMasked.annualExpenses],
+    ['Retirement outlook', `${context.retirementProjection.status} · eligible ${context.retirementProjection.fireEligibleCorpusRange}`],
     ['Holdings', holdingsLabel(context.holdingsSummary)],
     ['Market data', marketLabel(context.nifty50)],
     ['Precision', context.sendExact ? 'Exact figures sent' : 'Range estimates only'],

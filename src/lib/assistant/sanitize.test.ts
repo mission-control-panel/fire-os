@@ -138,6 +138,16 @@ describe('buildContextSummary', () => {
     expect(ctx.profileMasked.fiTarget).toBe('1Cr+');
   });
 
+  it('shares the retirement engine outcome with assistant context', () => {
+    const state = initializeState();
+    state.profile.age = 35;
+    state.profile.annualExpenses = 50_000;
+    const ctx = buildContextSummary(state);
+    expect(ctx.retirementProjection.status).toBe('unreachable');
+    expect(ctx.retirementProjection.uncertainty).toBe('assumptions');
+    expect(ctx.retirementProjection.requiredCorpusRange).not.toBe('unavailable');
+  });
+
   it('includes Nifty level, 52-week high, drawdown, and freshness metadata', () => {
     const state = initializeState();
     const timestamp = new Date().toISOString();
