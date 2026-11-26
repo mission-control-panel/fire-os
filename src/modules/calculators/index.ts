@@ -89,7 +89,7 @@ function renderCrashProtocol(): string {
   const deploy10 = levelAmount(10);
   const deploy15 = levelAmount(15);
   const deploy25 = levelAmount(25);
-  const defaultCrashFund = safety.crash.crashFund ?? 0;
+  const defaultCrashFund = safety.crash.crashFund;
   const amountLabel = (amount: number | null | undefined) => amount === null || amount === undefined ? 'Unavailable' : formatCurrency(amount);
 
   return `
@@ -160,7 +160,7 @@ function renderEmergencyRunway(): string {
         </div>
         <div class="runway-item">
           <span class="label">Total Liquid</span>
-          <span class="value">${display(liquidity.accessibleValue)}</span>
+          <span class="value">${liquidity.status === 'available' ? display(liquidity.accessibleValue) : 'Unavailable'}</span>
         </div>
       </div>
 
