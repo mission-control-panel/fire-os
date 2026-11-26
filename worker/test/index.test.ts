@@ -292,7 +292,20 @@ describe('Assistant Worker', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const response = await worker.fetch(queryRequest(), env);
+    const response = await worker.fetch(
+      queryRequest({
+        contextSummary: {
+          valuation: {
+            coveragePercent: 50,
+            unpricedHoldings: 1,
+            staleHoldings: 1,
+            status: 'partial',
+          },
+          exact: { netWorth: 100 },
+        },
+      }),
+      env,
+    );
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body as string);
 
     expect(response.status).toBe(200);
@@ -302,6 +315,8 @@ describe('Assistant Worker', () => {
     });
     expect(payload.models).toEqual(['openrouter/free', 'fallback/model:free']);
     expect(payload.messages[0].content).toContain('Current user context');
+    expect(payload.messages[0].content).toContain('partial');
+    expect(payload.messages[0].content).toContain('do not recommend trades');
     expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
 

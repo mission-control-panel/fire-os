@@ -49,6 +49,8 @@ export interface SanitizedContext {
   holdingsSummary: Record<string, { count: number; totalRange: BalanceRange }>;
   /** Net worth range */
   netWorthRange: BalanceRange;
+  /** Aggregation confidence; unknown valuations must not be treated as losses. */
+  valuation: { coveragePercent: number; unpricedHoldings: number; staleHoldings: number; status: 'complete' | 'partial' };
   /** Public Nifty 50 market data; null when no valid cached value exists */
   nifty50: NiftyContext | null;
   /** Profile fields that affect advice, masked */
@@ -124,7 +126,7 @@ export function buildContextSummary(
   const age = Number.isFinite(profile.age) ? profile.age : 0;
   const ageBand = age < 30 ? '20s' : age < 40 ? '30s' : age < 50 ? '40s' : '50s+';
 
-  const { netWorth, breakdown } = totalNetWorth(state);
+  const { netWorth, breakdown, valuation } = totalNetWorth(state);
   const monthlySipContribution = Object.values(state.sip).reduce(
     (sum, fund) => sum + (Number.isFinite(fund.monthlyAmount) ? fund.monthlyAmount : 0),
     0,
@@ -152,6 +154,12 @@ export function buildContextSummary(
     fiTargetRange: bucketBalance(fiTarget),
     holdingsSummary,
     netWorthRange: bucketBalance(netWorth),
+    valuation: {
+      coveragePercent: Number(valuation.coveragePercent.toFixed(1)),
+      unpricedHoldings: valuation.unpricedHoldings,
+      staleHoldings: valuation.staleHoldings,
+      status: valuation.hasUnknownValues ? 'partial' : 'complete',
+    },
     nifty50: sanitizeNiftyData(state.niftyData, now),
     profileMasked: {
       annualExpenses: bucketBalance(annualExpenses),

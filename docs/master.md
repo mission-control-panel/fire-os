@@ -387,6 +387,13 @@ behavior is not uniform: NAV returns stale cache, generic FX may return stale
 cache, Nifty currently returns null after failed refresh, and stock quote does
 not return expired cache. See [backend API behavior](backend.md#external-service-contracts-and-refresh-triggers).
 
+Dashboard valuation KPIs expose `current`, `stale`, `missing`, and explicit `zero`
+states. Missing NAVs are excluded from numeric totals and reported through priced /
+unpriced coverage and provenance; stale last-good values remain visible but do not
+produce a definitive SIP return. The same coverage metadata is included in the
+sanitized Assistant context so incomplete data cannot be presented as a loss or a
+complete portfolio.
+
 ### Financial planning updates
 
 Profile fields and holdings drive Dashboard KPIs; Insurance thresholds use
