@@ -116,10 +116,13 @@ export function refreshPortfolioNAVs(state: FireOSState): Promise<void> {
 }
 
 async function refreshPortfolioNAVsNow(state: FireOSState): Promise<number> {
-  const sipsToFetch = Object.entries(state.sip).filter(([, fund]) => fund.units && fund.units > 0);
+  const fundsToFetch = [
+    ...Object.entries(state.sip).map(([key, fund]) => ({ key: `SIP ${key}`, fund })),
+    ...Object.entries(state.mf).map(([key, fund]) => ({ key: `MF ${key}`, fund })),
+  ].filter(({ fund }) => fund.units && fund.units > 0);
   let fetched = 0;
 
-  for (const [key, fund] of sipsToFetch) {
+  for (const { key, fund } of fundsToFetch) {
     const schemeCode = fund.schemeCode;
     if (schemeCode) {
       try {
@@ -130,7 +133,7 @@ async function refreshPortfolioNAVsNow(state: FireOSState): Promise<number> {
           fetched++;
         }
       } catch (error) {
-        console.warn(`[MarketData] Failed to fetch NAV for SIP ${key}:`, error);
+        console.warn(`[MarketData] Failed to fetch NAV for ${key}:`, error);
       }
     }
     await new Promise(resolve => setTimeout(resolve, 100));

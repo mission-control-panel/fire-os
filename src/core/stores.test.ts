@@ -301,6 +301,22 @@ describe('market refresh signal', () => {
     marketRefreshStatusStore.set('idle');
   });
 
+  it('refreshes positive-unit MF holdings as well as SIP holdings', async () => {
+    vi.mocked(fetchNAV).mockResolvedValue({ schemeCode: 'mf-123' } as never);
+    vi.mocked(getNAVCacheMap).mockReturnValue({
+      'mf-123': { schemeCode: 'mf-123', nav: 100, timestamp: new Date().toISOString() },
+    } as never);
+
+    const state = initializeState();
+    state.mf = { key1: { units: 10, schemeCode: 'mf-123', name: 'MF Fund' } } as never;
+
+    await refreshPortfolioNAVs(state);
+
+    expect(fetchNAV).toHaveBeenCalledWith('mf-123');
+    expect(state.nav['mf-123']?.nav).toBe(100);
+    marketRefreshStatusStore.set('idle');
+  });
+
   it('publishes the error status when the refresh cycle fails', async () => {
     const seen: MarketRefreshStatus[] = [];
     const unsubscribe = marketRefreshStatusStore.subscribe((status) => seen.push(status));
