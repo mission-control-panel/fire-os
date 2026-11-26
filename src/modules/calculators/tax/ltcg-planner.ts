@@ -34,15 +34,15 @@ export interface TaxHarvestPlan {
   assumptions: string[];
 }
 
-function ledgerLotsForState(state: FireOSState, asOf: Date): TaxLot[] {
+function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; hasSource: boolean; reconciled: boolean } {
   const ledger = state.transactionLedger;
-  if (!ledger?.lots?.length && !ledger?.transactions?.length) return [];
+  if (!ledger?.lots?.length && !ledger?.transactions?.length) return { lots: [], hasSource: false, reconciled: false };
   const lots: TaxLot[] = [];
   let currentLots;
   try {
     currentLots = ledger.transactions.length > 0 ? reconcileLedgerLots(ledger) : ledger.lots;
   } catch {
-    return [];
+    return { lots: [], hasSource: true, reconciled: false };
   }
   for (const [fundKey, fund] of Object.entries(state.sip || {})) {
     if (!fund) continue;
@@ -72,7 +72,28 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): TaxLot[] {
       });
     }
   }
-  return lots;
+  return { lots, hasSource: true, reconciled: true };
+}
+
+function emptyLedgerPlan(state: FireOSState): TaxHarvestPlan {
+  const configuredLimit = state.taxCalendar?.harvestTarget ?? 0;
+  return {
+    totalInvested: 0,
+    totalCurrentValue: 0,
+    totalLtcgGains: 0,
+    remainingLimit: Math.max(0, configuredLimit - (state.taxCalendar?.lastHarvestedAmount ?? 0)),
+    totalRecommendedHarvest: 0,
+    totalRecommendedHarvestGain: 0,
+    recommendations: [],
+    dataQuality: 'exact',
+    financialYear: null,
+    taxRuleVersion: CURRENT_INDIAN_CAPITAL_GAINS_RULES.version,
+    taxRuleSourceUrl: CURRENT_INDIAN_CAPITAL_GAINS_RULES.sourceUrl,
+    taxRuleEffectiveFrom: CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom,
+    taxRate: CURRENT_INDIAN_CAPITAL_GAINS_RULES.ltcgRate,
+    taxExemption: configuredLimit,
+    assumptions: ['The transaction ledger reconciles to zero current holdings; no harvest is recommended.', 'No trade, redemption, or tax filing is initiated by this calculation.'],
+  };
 }
 
 function fromTaxLotPlan(plan: TaxLotHarvestPlan, state: FireOSState): TaxHarvestPlan {
@@ -129,12 +150,13 @@ export function calculateLTCGHarvestPlan(
   state: FireOSState,
   now: Date = new Date()
 ): TaxHarvestPlan {
-  const ledgerLots = ledgerLotsForState(state, now);
-  if (ledgerLots.length > 0) {
+  const ledgerState = ledgerLotsForState(state, now);
+  if (ledgerState.reconciled && ledgerState.hasSource && ledgerState.lots.length === 0) return emptyLedgerPlan(state);
+  if (ledgerState.lots.length > 0) {
     const configuredLimit = state.taxCalendar?.harvestTarget ?? 0;
     const rules = { ...CURRENT_INDIAN_CAPITAL_GAINS_RULES, section112aExemption: configuredLimit };
     return fromTaxLotPlan(calculateTaxLotPlan({
-      lots: ledgerLots,
+      lots: ledgerState.lots,
       asOf: now,
       lastHarvestedAmount: state.taxCalendar?.lastHarvestedAmount,
       rules,
@@ -262,7 +284,7 @@ export function calculateLTCGHarvestPlan(
     taxRuleSourceUrl: CURRENT_INDIAN_CAPITAL_GAINS_RULES.sourceUrl,
     taxRuleEffectiveFrom: CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom,
     taxRate: CURRENT_INDIAN_CAPITAL_GAINS_RULES.ltcgRate,
-    taxExemption: CURRENT_INDIAN_CAPITAL_GAINS_RULES.section112aExemption,
+    taxExemption: harvestTarget,
     assumptions: ['Dated acquisition lots are unavailable; the legacy SIP-age estimate is shown.', 'No trade, redemption, or tax filing is initiated by this calculation.'],
   };
 }

@@ -85,6 +85,32 @@ describe('transaction ledger', () => {
     expect(reconcileLedgerLots(ledger)).toEqual([{ id: 'move-in:lot:transfer-0', transactionId: 'move-in', accountId: 'new-brokerage', instrumentId: 'fund-a', acquiredDate: '2024-01-01', quantityMicros: 10_000, costPaise: 100_000, costProvenance: 'exact' }]);
   });
 
+  it('limits a linked transfer-in to its declared quantity', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-partial', 100_000, 100_000), date: '2024-01-01' },
+        { id: 'move-out-partial', dedupKey: 'move-out-partial', date: '2025-01-02', type: 'transfer_out', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 100_000, costProvenance: 'exact' },
+        { id: 'move-in-partial', dedupKey: 'move-in-partial', date: '2025-01-03', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out-partial', amountPaise: 0, quantityMicros: 40_000, costProvenance: 'unknown' },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)).toMatchObject([{ quantityMicros: 40_000, costPaise: 40_000, acquiredDate: '2024-01-01' }]);
+  });
+
+  it('resolves same-day linked transfers before lexical ID order', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-same-day', 100_000, 10_000), date: '2024-01-01' },
+        { id: 'a-in', dedupKey: 'a-in', date: '2025-01-02', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'z-out', amountPaise: 0, quantityMicros: 10_000, costProvenance: 'unknown' },
+        { id: 'z-out', dedupKey: 'z-out', date: '2025-01-02', type: 'transfer_out', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 10_000, costProvenance: 'exact' },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)[0]).toMatchObject({ acquiredDate: '2024-01-01', costPaise: 100_000, costProvenance: 'exact' });
+  });
+
   it('applies stock splits without resetting acquisition cost or date', () => {
     const ledger: ReturnType<typeof createTransactionLedger> = {
       ...createTransactionLedger(),

@@ -301,7 +301,14 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
     return { costPaise: consumedCost, costProvenance: provenance };
   };
   const transferCosts = new Map<string, { costPaise: number; costProvenance: CostProvenance }>();
-  for (const transaction of [...ledger.transactions].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
+  const transactions = [...ledger.transactions].sort((a, b) => {
+    const dateOrder = a.date.localeCompare(b.date);
+    if (dateOrder !== 0) return dateOrder;
+    if (a.type === 'transfer_in' && a.linkedTransactionId === b.id) return 1;
+    if (b.type === 'transfer_in' && b.linkedTransactionId === a.id) return -1;
+    return a.id.localeCompare(b.id);
+  });
+  for (const transaction of transactions) {
     const quantity = transaction.quantityMicros ?? 0;
     if (transaction.type === 'purchase' || transaction.type === 'opening_balance') addLot(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     if (transaction.type === 'transfer_out') {
@@ -362,7 +369,14 @@ export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
     queues.set(key(transaction), queue);
     return consumedLots;
   };
-  for (const transaction of [...ledger.transactions].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
+  const transactions = [...ledger.transactions].sort((a, b) => {
+    const dateOrder = a.date.localeCompare(b.date);
+    if (dateOrder !== 0) return dateOrder;
+    if (a.type === 'transfer_in' && a.linkedTransactionId === b.id) return 1;
+    if (b.type === 'transfer_in' && b.linkedTransactionId === a.id) return -1;
+    return a.id.localeCompare(b.id);
+  });
+  for (const transaction of transactions) {
     const quantity = transaction.quantityMicros ?? 0;
     if (transaction.type === 'purchase' || transaction.type === 'opening_balance') add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     if (transaction.type === 'sale') consume(transaction);
@@ -370,7 +384,15 @@ export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
     if (transaction.type === 'transfer_in') {
       const carried = transaction.linkedTransactionId ? transferred.get(transaction.linkedTransactionId) : undefined;
       if (carried?.length) {
-        for (const [index, lot] of carried.entries()) add(transaction, lot.quantityMicros, lot.costPaise, lot.costProvenance, lot.acquiredDate, `:transfer-${index}`);
+        let remaining = quantity || carried.reduce((sum, lot) => sum + lot.quantityMicros, 0);
+        for (const [index, lot] of carried.entries()) {
+          if (remaining <= 0) break;
+          const carriedQuantity = Math.min(remaining, lot.quantityMicros);
+          const carriedCost = lot.quantityMicros === carriedQuantity ? lot.costPaise : Math.round(lot.costPaise * carriedQuantity / lot.quantityMicros);
+          add(transaction, carriedQuantity, carriedCost, lot.costProvenance, lot.acquiredDate, `:transfer-${index}`);
+          remaining -= carriedQuantity;
+        }
+        if (remaining > 0) throw new Error(`Transfer-in quantity exceeds linked transfer for ${transaction.id}`);
       } else add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     }
     if (transaction.type === 'split') {
