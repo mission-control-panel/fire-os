@@ -1,4 +1,4 @@
-import { differenceInCalendarMonths, isValid, parse } from 'date-fns';
+import { differenceInCalendarMonths, format, isValid, parse } from 'date-fns';
 import type { FireOSState } from '../../../types/state';
 import { reconcileLedgerLots, type LedgerLot, type LedgerTransaction } from '../../../lib/transaction-ledger';
 import { calculateTaxLotPlan, CURRENT_INDIAN_CAPITAL_GAINS_RULES, financialYearFor, type TaxLot, type TaxLotDisposal, type TaxLotHarvestPlan } from './tax-lot-engine';
@@ -36,12 +36,13 @@ export interface TaxHarvestPlan {
   assumptions: string[];
 }
 
-function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; realizedLots: TaxLot[]; disposals: TaxLotDisposal[]; hasSource: boolean; reconciled: boolean; hasCurrentLots: boolean } {
+function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; realizedLots: TaxLot[]; disposals: TaxLotDisposal[]; hasSource: boolean; reconciled: boolean; hasCurrentLots: boolean; unsupportedRealized: boolean } {
   const ledger = state.transactionLedger;
-  if (!ledger?.lots?.length && !ledger?.transactions?.length) return { lots: [], realizedLots: [], disposals: [], hasSource: false, reconciled: false, hasCurrentLots: false };
+  if (!ledger?.lots?.length && !ledger?.transactions?.length) return { lots: [], realizedLots: [], disposals: [], hasSource: false, reconciled: false, hasCurrentLots: false, unsupportedRealized: false };
   const lots: TaxLot[] = [];
   const realizedLots: TaxLot[] = [];
   const disposals: TaxLotDisposal[] = [];
+  let unsupportedRealized = false;
   let currentLots;
   try {
     currentLots = ledger.transactions.length > 0
@@ -49,14 +50,19 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; r
         const quantity = transaction.quantityMicros ?? 0;
         const salePrice = quantity > 0 ? (transaction.amountPaise / 100) / (quantity / 1_000_000) : 0;
         for (const lot of consumed) {
-          const assetClass = ledger.instruments[lot.instrumentId]?.assetClass === 'equity-listed' ? 'equity-listed' : 'equity-mutual-fund';
+          const instrumentClass = ledger.instruments[lot.instrumentId]?.assetClass;
+          if (instrumentClass !== 'equity-listed' && instrumentClass !== 'equity-mutual-fund') {
+            unsupportedRealized = true;
+            continue;
+          }
+          const assetClass = instrumentClass;
           realizedLots.push({ id: lot.id, fundKey: lot.instrumentId, fundName: lot.instrumentId, assetClass, acquiredDate: lot.acquiredDate, units: lot.quantityMicros / 1_000_000, costBasis: lot.costPaise / 100, currentNAV: 0, dataQuality: lot.costProvenance === 'exact' ? 'exact' : 'estimated' });
           disposals.push({ lotId: lot.id, saleDate: transaction.date, units: lot.quantityMicros / 1_000_000, salePrice, assetClass });
         }
       })
       : ledger.lots;
   } catch {
-    return { lots: [], realizedLots: [], disposals: [], hasSource: true, reconciled: false, hasCurrentLots: false };
+    return { lots: [], realizedLots: [], disposals: [], hasSource: true, reconciled: false, hasCurrentLots: false, unsupportedRealized: false };
   }
   for (const [fundKey, fund] of Object.entries(state.sip || {})) {
     if (!fund) continue;
@@ -85,7 +91,7 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): { lots: TaxLot[]; r
       });
     }
   }
-  return { lots, realizedLots, disposals, hasSource: true, reconciled: true, hasCurrentLots: currentLots.length > 0 };
+  return { lots, realizedLots, disposals, hasSource: true, reconciled: true, hasCurrentLots: currentLots.length > 0, unsupportedRealized };
 }
 
 function emptyLedgerPlan(state: FireOSState): TaxHarvestPlan {
@@ -199,7 +205,8 @@ export function calculateLTCGHarvestPlan(
 ): TaxHarvestPlan {
   const ledgerState = ledgerLotsForState(state, now);
   if (ledgerState.hasSource && !ledgerState.reconciled) return unavailableLedgerPlan(state, 'The transaction ledger could not be reconciled; the result is unavailable.');
-  if (now.toISOString().slice(0, 10) < CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom || ledgerState.disposals.some((disposal) => disposal.saleDate < CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom)) {
+  if (ledgerState.unsupportedRealized) return unavailableLedgerPlan(state, 'Realized disposals include unsupported asset classes; the result is unavailable.');
+  if (format(now, 'yyyy-MM-dd') < CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom || ledgerState.disposals.some((disposal) => disposal.saleDate < CURRENT_INDIAN_CAPITAL_GAINS_RULES.effectiveFrom)) {
     return unavailableLedgerPlan(state, 'Historical disposals predate the versioned tax rules available to this planner.');
   }
   if (ledgerState.reconciled && ledgerState.hasSource && ledgerState.lots.length === 0 && ledgerState.disposals.length === 0) {
