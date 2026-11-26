@@ -278,7 +278,9 @@ before confirm to catch identity or state changes since preview.
 
 Snapshot flow: commit records current state before apply, applies values in
 place, records an assistant-only inverse with the resulting state fingerprint,
-then `persistPortfolioState()`. Local save happens before awaited cloud sync.
+then `persistPortfolioState()`. The inverse is reserved before mutation; if
+session storage cannot accept it, the proposal is rejected without a state or
+persistence change. Local save happens before awaited cloud sync.
 If cloud fails after local write, implementation retains state locally, records
 `save-failed`, and offers Undo. Undo uses the matching assistant inverse only;
 an intervening edit causes a safe no-op.

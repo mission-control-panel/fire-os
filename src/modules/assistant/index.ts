@@ -725,10 +725,22 @@ async function commitProposal(
   // Snapshot pre-change state so Undo works even before saveData runs
   const storageKey = getPortfolioStorageKey();
   const beforeSnapshot = stripRuntime(state);
+  if (storageKey && !recordAssistantUndo(storageKey, beforeSnapshot, proposalStateFingerprint(validation.candidate))) {
+    appendAssistantAction(getScope(), {
+      question: question.slice(0, 200),
+      diff,
+      decision: 'validation-failed',
+      cloudSaved: false,
+      notes: ['Assistant undo storage is unavailable; nothing was changed.'],
+    });
+    card.remove();
+    appendMessage(messages, 'assistant-note', 'Assistant undo is unavailable; nothing was changed.');
+    refreshAuditSection();
+    return;
+  }
   if (storageKey) recordPortfolioSnapshot(storageKey, beforeSnapshot);
 
   applyValidatedProposal(state, proposedChanges);
-  if (storageKey) recordAssistantUndo(storageKey, beforeSnapshot, proposalStateFingerprint(state));
 
   try {
     if (cloudSave) {
