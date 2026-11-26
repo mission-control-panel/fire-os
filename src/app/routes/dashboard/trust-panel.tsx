@@ -155,6 +155,17 @@ function TrustSummary({
   );
 }
 
+/** Zero NAVs only reduce trust when a fund has units that need pricing. */
+export function hasUncertainFundValuation(
+  state: FireOSState,
+  valuation: ReturnType<typeof totalNetWorth>['valuation'],
+): boolean {
+  const hasZeroValuation = [...Object.values(state.sip || {}), ...Object.values(state.mf || {})].some(
+    (fund) => fund.units > 0 && Boolean(fund.schemeCode) && state.nav[fund.schemeCode ?? '']?.nav === 0,
+  );
+  return valuation.hasUnknownValues || hasZeroValuation;
+}
+
 export function DataTrustPanel({ state }: { state: FireOSState }) {
   const sync = useStore(syncStatusStore);
   const market = useStore(marketRefreshStatusStore);
@@ -165,7 +176,7 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
   const staleCount = staleLabels.length;
   const completeness = profileCompletenessPercent(state);
   const valuation = totalNetWorth(state).valuation;
-  const valuationNeedsAttention = valuation.hasUnknownValues || valuation.sources.some((source) => source.status === 'zero');
+  const valuationNeedsAttention = hasUncertainFundValuation(state, valuation);
   const savedLabel = state._lastSavedAt
     ? `Last saved ${new Date(state._lastSavedAt).toLocaleString()}`
     : 'Not saved yet';
@@ -191,7 +202,13 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
           scope={scope}
         />
         <TrustRow label="Quality">
-          {staleCount === 0 ? 'Current' : `${staleCount} stale source${staleCount === 1 ? '' : 's'}`}
+          {staleCount > 0
+            ? `${staleCount} stale source${staleCount === 1 ? '' : 's'}`
+            : valuationNeedsAttention
+              ? 'Incomplete valuation coverage'
+              : market === 'error'
+                ? 'Refresh failed'
+                : 'Current'}
         </TrustRow>
         {staleCount > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
