@@ -182,6 +182,7 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
     : 'Not saved yet';
   const shownLabels = staleLabels.slice(0, 5).join(', ');
   const overflow = staleLabels.length > 5 ? ` +${staleLabels.length - 5} more` : '';
+  const valuationRefreshNeeded = staleCount > 0 || valuationNeedsAttention;
   const { liabilities } = totalNetWorth(state);
 
   const onRefresh = () => {
@@ -210,10 +211,12 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
                 ? 'Refresh failed'
                 : 'Current'}
         </TrustRow>
-        {staleCount > 0 ? (
+        {valuationRefreshNeeded ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-(--color-muted-foreground)" title="Refresh to update these values">
-              {`Stale: ${shownLabels}${overflow}`}
+              {staleCount > 0
+                ? `Stale: ${shownLabels}${overflow}`
+                : 'Valuation coverage needs refresh'}
             </span>
             <Button
               id="data-trust-refresh-btn"
