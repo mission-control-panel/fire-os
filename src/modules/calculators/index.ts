@@ -7,7 +7,7 @@ import { formatCurrency } from '../../lib/formatters';
 import { createFeatureContext, type FeatureContext } from '../../core/feature-context';
 import './styles.css';
 import { initTaxModule } from './tax';
-import { executeMonthlyWithdrawal, DEFAULT_FUND_BUCKETS, calculateFIFORedemption } from './swp-scheduler';
+import { calculateMonthlyWithdrawal, recordMonthlyWithdrawal, DEFAULT_FUND_BUCKETS } from './swp-scheduler';
 import { compareFIScenarios, type FIScenarioInput, type FIScenarioResult } from './scenario-modeler';
 import { emergencyRunway, sipPauseImpact } from '../../lib/calculations';
 
@@ -323,6 +323,14 @@ function attachCalculatorHandlers(context: FeatureContext) {
 
   // Scenario Compare (read-only projection, never saves state)
   document.getElementById('compare-scenarios-btn')?.addEventListener('click', () => runScenarioCompare(context));
+  document.getElementById('copy-scenario-a-btn')?.addEventListener('click', () => {
+    copyScenarioInputs('a', 'b');
+    announceScenarioStatus('Scenario A copied to Scenario B.');
+  });
+  document.getElementById('reset-scenarios-btn')?.addEventListener('click', () => {
+    resetScenarioInputs(context);
+    announceScenarioStatus('Scenario inputs reset to defaults.');
+  });
 
   // SWP Scheduler handlers
   document.getElementById('save-swp-btn')?.addEventListener('click', () => {
@@ -363,17 +371,17 @@ function attachCalculatorHandlers(context: FeatureContext) {
         context.ports.ui.showToast('Please enable SWP and save config first', 3000, 'warning');
         return;
       }
-      const { actualAmount } = await executeMonthlyWithdrawal(D);
-      await context.portfolio.save(D, { awaitCloud: true });
+      const plan = calculateMonthlyWithdrawal(D);
+      if (plan.status !== 'ready') throw new Error(plan.reason || 'Withdrawal is not safe to simulate');
       const target = D.swpSchedule.monthlyAmount;
-      if (actualAmount > 0 && actualAmount < target) {
+      if (plan.actualAmount > 0 && plan.actualAmount < target) {
         context.ports.ui.showToast(
-          `✓ Withdrawal executed for ₹${Math.round(actualAmount).toLocaleString('en-IN')} (shortfall of ₹${Math.round(target - actualAmount).toLocaleString('en-IN')})`,
+          `Preview: ₹${Math.round(plan.actualAmount).toLocaleString('en-IN')} available (shortfall of ₹${Math.round(target - plan.actualAmount).toLocaleString('en-IN')})`,
           5000,
           'warning',
         );
       } else {
-        context.ports.ui.showToast('✓ Simulated withdrawal executed successfully', 3000, 'success');
+        context.ports.ui.showToast(`Preview only: ₹${Math.round(plan.actualAmount).toLocaleString('en-IN')} would be withdrawn`, 3000, 'success');
       }
     } catch {
       context.ports.ui.showToast('✗ Withdrawal execution failed', 3000, 'error');
@@ -382,6 +390,26 @@ function attachCalculatorHandlers(context: FeatureContext) {
         triggerBtn.disabled = false;
         triggerBtn.textContent = 'Simulate Withdrawal';
       }
+    }
+  });
+
+  document.getElementById('record-swp-btn')?.addEventListener('click', async () => {
+    const button = document.getElementById('record-swp-btn') as HTMLButtonElement;
+    if (button) button.disabled = true;
+    try {
+      const result = await recordMonthlyWithdrawal(D);
+      await context.portfolio.save(D, { awaitCloud: true });
+      context.ports.ui.showToast(
+        result.status === 'duplicate'
+          ? 'Withdrawal already recorded; no duplicate was applied'
+          : `✓ Withdrawal recorded for ₹${Math.round(result.actualAmount).toLocaleString('en-IN')}`,
+        4000,
+        result.status === 'duplicate' ? 'warning' : 'success',
+      );
+    } catch (error) {
+      context.ports.ui.showToast(error instanceof Error ? error.message : 'Withdrawal could not be recorded', 4000, 'error');
+    } finally {
+      if (button) button.disabled = false;
     }
   });
 }
@@ -481,21 +509,11 @@ function renderSWPScheduler(): string {
   const swp = D.swpSchedule || { enabled: false, startDate: '', monthlyAmount: 0, rate: 3 };
   const fundBuckets = D.fundBuckets ?? DEFAULT_FUND_BUCKETS;
   const fundOrder = fundBuckets.map((b: { id: string }) => b.id);
-  const redemption = calculateFIFORedemption(
-    // build holdings from state.sip + state.mf grouped by bucket
-    {},
-    swp.monthlyAmount || 0,
-    fundOrder,
-  );
-
-  // Build a readable schedule summary
-  const redeemed: Record<string, number> = {};
-  for (const [bucketId, units] of Object.entries(redemption)) {
-    if (units > 0) redeemed[bucketId] = units;
-  }
-
-  const totalRedeemed = Object.values(redeemed).reduce((sum, units) => sum + units, 0);
-  const totalValue = totalRedeemed > 0 ? `${formatCurrency(totalRedeemed * 1000)}` : '0';
+  const preview = calculateMonthlyWithdrawal(D);
+  const previewMessage =
+    preview.status === 'ready'
+      ? `Fresh-NAV preview: ${formatCurrency(preview.actualAmount)}${preview.shortfall > 0 ? `; shortfall ${formatCurrency(preview.shortfall)}` : ''}.`
+      : `Preview unavailable: ${preview.reason ?? 'withdrawal is not ready'}.`;
 
   return `
     <div class="calc-card">
@@ -534,34 +552,12 @@ function renderSWPScheduler(): string {
       <div class="flex flex-row gap-4">
         <button id="save-swp-btn" class="btn btn-primary">Save SWP Config</button>
         <button id="trigger-swp-btn" class="btn btn-secondary">Simulate Withdrawal</button>
+        <button id="record-swp-btn" class="btn btn-secondary">Record Withdrawal</button>
       </div>
 
       <div class="mt-4">
-        <h4>Redemption Plan</h4>
-        <div class="table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Fund</th>
-                <th>Units</th>
-                <th>Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${fundBuckets.map((b, i) => {
-                const units = redeemed[b.id] || 0;
-                const amount = units * 1000; // placeholder nav
-                return `
-                <tr>
-                  <td>${b.label || b.id}</td>
-                  <td>${units}</td>
-                  <td>${formatCurrency(amount)}</td>
-                </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
+        <h4>Withdrawal Preview</h4>
+        <p class="calc-info" role="status">${escapeHtml(previewMessage)}</p>
       </div>
     </div>
   `;
@@ -619,12 +615,46 @@ function renderScenarioCompare(context: FeatureContext): string {
       </div>
 
       <button id="compare-scenarios-btn" class="btn btn-primary">Compare Scenarios</button>
+      <button id="copy-scenario-a-btn" class="btn btn-secondary">Copy A to B</button>
+      <button id="reset-scenarios-btn" class="btn btn-secondary">Reset scenarios</button>
 
-      <div id="compare-result" class="calc-result">
-        <p class="calc-info" style="margin-bottom: 0;">Enter assumptions and press Compare Scenarios to see projections.</p>
+      <div id="compare-result" class="calc-result" aria-live="polite">
+        <p class="calc-info" style="margin-bottom: 0;" aria-live="polite">Enter assumptions and press Compare Scenarios to see projections.</p>
       </div>
     </div>
   `;
+}
+
+function copyScenarioInputs(source: 'a' | 'b', target: 'a' | 'b') {
+  for (const field of ['label', 'corpus', 'sip', 'ret', 'stepup', 'goal', 'age']) {
+    const from = document.getElementById(`cmp-${source}-${field}`) as HTMLInputElement | null;
+    const to = document.getElementById(`cmp-${target}-${field}`) as HTMLInputElement | null;
+    if (from && to) to.value = from.value;
+  }
+}
+
+function resetScenarioInputs(context: FeatureContext) {
+  const { netWorth } = context.ports.calculations.totalNetWorth(D);
+  const fiGoal = D.profile.fiTarget || 55_000_000;
+  const currentAge = D.profile.age || 25;
+  const monthlySip = Object.values(D.sip).reduce((sum, sip) => sum + (sip.monthlyAmount || 0), 0);
+  const defaults: Record<string, string | number> = {
+    'cmp-a-label': 'Balanced', 'cmp-a-corpus': Math.round(netWorth), 'cmp-a-sip': monthlySip,
+    'cmp-a-ret': 15, 'cmp-a-stepup': 10, 'cmp-a-goal': fiGoal, 'cmp-a-age': currentAge,
+    'cmp-b-label': 'Conservative', 'cmp-b-corpus': Math.round(netWorth), 'cmp-b-sip': monthlySip,
+    'cmp-b-ret': 10, 'cmp-b-stepup': 5, 'cmp-b-goal': fiGoal, 'cmp-b-age': currentAge,
+  };
+  for (const [id, value] of Object.entries(defaults)) {
+    const input = document.getElementById(id) as HTMLInputElement | null;
+    if (input) input.value = String(value);
+  }
+  const result = document.getElementById('compare-result');
+  if (result) result.innerHTML = '<p class="calc-info" style="margin-bottom: 0;">Enter assumptions and press Compare Scenarios to see projections.</p>';
+}
+
+function announceScenarioStatus(message: string) {
+  const result = document.getElementById('compare-result');
+  if (result) result.setAttribute('aria-label', message);
 }
 
 function runScenarioCompare(context: FeatureContext) {

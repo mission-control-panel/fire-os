@@ -7,7 +7,7 @@ import { checkNewMilestones } from '../modules/plan/milestones';
 export interface DailyTaskDeps {
   persist(state: FireOSState): void;
   notify(message: string, duration: number, type: ToastType): void;
-   executeMonthlyWithdrawal(state: FireOSState): Promise<{ actualAmount: number }>;
+  executeMonthlyWithdrawal(state: FireOSState, idempotencyKey?: string, operationDate?: Date): Promise<{ actualAmount: number }>;
 }
 
 /**
@@ -18,7 +18,8 @@ export function createDailyTaskRunner(deps: DailyTaskDeps): (state: FireOSState)
   return function checkDailyTasks(state: FireOSState): void {
     try {
       const nw = totalNetWorth(state);
-      const today = new Date().toISOString().substring(0, 10);
+      const operationDate = new Date();
+      const today = operationDate.toISOString().substring(0, 10);
       let stateChanged = false;
 
       // Net worth history snapshot (only if we actually have data to record)
@@ -58,7 +59,7 @@ export function createDailyTaskRunner(deps: DailyTaskDeps): (state: FireOSState)
           if (!hasSwpThisMonth) {
             const target = state.swpSchedule.monthlyAmount;
             deps
-              .executeMonthlyWithdrawal(state)
+              .executeMonthlyWithdrawal(state, `swp:${currentYearMonth}`, operationDate)
               .then((result) => {
                 deps.persist(state);
                 const actual = result.actualAmount;
@@ -77,6 +78,7 @@ export function createDailyTaskRunner(deps: DailyTaskDeps): (state: FireOSState)
               })
               .catch((e) => {
                 console.error('[SWP Auto] Failed to execute withdrawal:', e);
+                deps.notify('⚠ Automatic monthly SWP was not recorded; review valuation data and retry.', 6000, 'warning');
               });
           }
         }
