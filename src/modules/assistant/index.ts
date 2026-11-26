@@ -14,7 +14,6 @@ import {
   classifyProposal,
   consentScope,
   defaultConsent,
-  hasConfirmedAssistantAction,
   normalizeConversationMessages,
   proposalStateFingerprint,
   queryAssistant,
@@ -34,9 +33,9 @@ import {
 import {
   getPortfolioStorageKey,
   persistPortfolioState,
-  undoLastSavedPortfolioChange,
 } from '../../lib/storage';
 import { recordPortfolioSnapshot } from '../../lib/snapshot-history';
+import { canUndoAssistantAction, recordAssistantUndo, undoLastAssistantAction } from '../../lib/assistant/undo';
 import { CONFIG } from '../../lib/config';
 import { getOptionalAuth } from '../../lib/firebase';
 import { showToast, createModal, closeModal } from '../ui';
@@ -725,7 +724,21 @@ async function commitProposal(
 
   // Snapshot pre-change state so Undo works even before saveData runs
   const storageKey = getPortfolioStorageKey();
-  if (storageKey) recordPortfolioSnapshot(storageKey, stripRuntime(state));
+  const beforeSnapshot = stripRuntime(state);
+  if (!storageKey || !recordAssistantUndo(storageKey, beforeSnapshot, proposalStateFingerprint(validation.candidate))) {
+    appendAssistantAction(getScope(), {
+      question: question.slice(0, 200),
+      diff,
+      decision: 'validation-failed',
+      cloudSaved: false,
+      notes: ['Assistant undo storage is unavailable; nothing was changed.'],
+    });
+    card.remove();
+    appendMessage(messages, 'assistant-note', 'Assistant undo is unavailable; nothing was changed.');
+    refreshAuditSection();
+    return;
+  }
+  if (storageKey) recordPortfolioSnapshot(storageKey, beforeSnapshot);
 
   applyValidatedProposal(state, proposedChanges);
 
@@ -808,14 +821,16 @@ function refreshAuditSection(): void {
     list.appendChild(item);
   }
 
-  undoBtn.disabled = !hasConfirmedAssistantAction(getScope());
+  const storageKey = getPortfolioStorageKey();
+  undoBtn.disabled = !storageKey || !activeContext || !canUndoAssistantAction(storageKey, activeContext.state);
 }
 
 async function handleUndo(): Promise<void> {
   if (!activeContext) return;
   const state = activeContext.state;
-  if (!undoLastSavedPortfolioChange(state)) {
-    showToast('No previous snapshot to restore.', 4000, 'warning');
+  const storageKey = getPortfolioStorageKey();
+  if (!storageKey || !undoLastAssistantAction(storageKey, state)) {
+    showToast('The last assistant change is no longer undoable because the portfolio changed.', 4000, 'warning');
     return;
   }
   try {
