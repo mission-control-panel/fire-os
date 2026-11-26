@@ -601,10 +601,12 @@ threshold coasting begins now; otherwise logs solve years from target/current
 and returns null if no positive return or beyond retirement age. Like
 `calculateFIAge()`, it throws on invalid parameters rather than returning null.
 The retirement engine is a separate pure calculation port: it reports net worth,
-investable/FIRE-eligible corpus, excluded restricted/earmarked/unvested/illiquid
-assets, inflation-adjusted retirement spending, tax and pension assumptions, and
-an explicit unavailable or unreachable state. Its outputs are estimates, not
-guaranteed returns, and it never mutates actual holdings.
+gross and liability-adjusted FIRE-eligible corpus, excluded
+restricted/earmarked/unvested/illiquid assets, inflation-adjusted retirement
+spending, and explicit tax and pension assumptions. Pension is treated as gross
+income and taxed at the same effective rate as withdrawals. The dashboard and
+assistant consume the same result; outputs are estimates, not guaranteed returns,
+and the engine never mutates actual holdings.
 `compareFIScenarios()` projects each entered scenario through that same
 `calculateFIAge()` math and returns results in input order with an `assumptions`
 echo of the full input (label, corpus, SIP, step-up, return, goal, age);

@@ -2,6 +2,7 @@ import { Card, cn } from '../../ui';
 import { formatCurrency, formatPercentage } from '../../../lib/formatters';
 import { calculateGoalProgress } from '../../../modules/dashboard/goal-tracker';
 import { fiProgress, floatIndicator, sipStatus, totalNetWorth } from '../../../modules/dashboard/kpis';
+import { projectDefaultRetirement } from '../../../modules/retirement/retirement-engine';
 import type { FireOSState, Goal } from '../../../types/state';
 
 const TONE_CLASS = {
@@ -80,7 +81,7 @@ export function KpiRow({ state }: { state: FireOSState }) {
           : 'Financial independence achieved'
         : 'FI target set to ₹0'
       : 'No FI target set'
-}
+      }
       />
       <KpiCard
         label="Market Drawdown"
@@ -88,6 +89,45 @@ export function KpiRow({ state }: { state: FireOSState }) {
         detail="From 52-week high"
       />
     </div>
+  );
+}
+
+/** Read-only FIRE projection using the same pure engine shared with the assistant. */
+export function RetirementReadinessCard({ state }: { state: FireOSState }) {
+  const netWorth = totalNetWorth(state);
+  const age = Number.isFinite(state.profile.age) && state.profile.age > 0 ? state.profile.age : 30;
+  const monthlyContribution = Object.values(state.sip).reduce(
+    (sum, fund) => sum + (Number.isFinite(fund.monthlyAmount) ? Math.max(0, fund.monthlyAmount) : 0),
+    0,
+  );
+  const projection = projectDefaultRetirement({
+    ...netWorth.breakdown,
+    liabilities: netWorth.liabilities,
+    currentAge: age,
+    annualExpenses: Math.max(0, state.profile.annualExpenses || 0) * 12,
+    monthlyContribution,
+    taxRate: Math.min(0.99, Math.max(0, (state.profile.taxSlabRate || 0) / 100)),
+    dataComplete: !netWorth.valuation.hasUnknownValues,
+  });
+  const label = projection.status === 'projected'
+    ? 'On track under assumptions'
+    : projection.status === 'already-retired'
+      ? 'Already retired'
+      : projection.status === 'unreachable'
+        ? 'Shortfall under assumptions'
+        : 'Unavailable';
+  const detail = projection.requiredCorpusAtRetirement !== null
+    ? `Eligible ${formatCurrency(projection.corpus.netFireEligibleCorpus, 0)} • Required ${formatCurrency(projection.requiredCorpusAtRetirement, 0)}`
+    : netWorth.valuation.hasUnknownValues
+      ? 'Refresh stale or missing valuations'
+      : 'Set positive monthly expenses to project';
+  return (
+    <Card className="flex flex-col gap-1">
+      <p className="text-xs font-semibold tracking-wide text-(--color-muted-foreground) uppercase">Retirement outlook</p>
+      <p className="text-lg font-bold text-(--color-foreground)">{label}</p>
+      <p className="text-xs text-(--color-muted-foreground)">{detail}</p>
+      <p className="text-xs text-(--color-muted-foreground)">Estimate only • 10% return, 6% inflation, 4% withdrawal</p>
+    </Card>
   );
 }
 

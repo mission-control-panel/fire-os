@@ -11,7 +11,7 @@ import { fetchCurrencyToInr, fetchEsopValuations, fetchStockQuote } from '../mod
 import { totalNetWorth, sipStatus, fiProgress, floatIndicator, portfolioComposition, attributeNetWorthChange, esopConcentration } from '../modules/dashboard/kpis';
 import { calculateAllocationDrift } from '../modules/calculators/portfolio-rebalancing';
 import { calculateFIAge, calculateCoastFire } from '../modules/calculators/scenario-modeler';
-import { projectRetirement, summarizeRetirementCorpus } from '../modules/retirement/retirement-engine';
+import { projectDefaultRetirement, projectRetirement, retirementAssetsFromValues, summarizeRetirementCorpus } from '../modules/retirement/retirement-engine';
 import { renderCashflowSummary } from '../modules/plan/cashflow-summary';
 import { renderExpenseTracker } from '../modules/trackers/expense-tracker';
 import { checkWatchdogRules } from '../modules/watchdog/fund-manager-alerts';
@@ -32,7 +32,9 @@ export {
   calculateFIAge,
   calculateCoastFire,
   projectRetirement,
+  projectDefaultRetirement,
   summarizeRetirementCorpus,
+  retirementAssetsFromValues,
   checkWatchdogRules,
 };
 
@@ -53,8 +55,10 @@ export interface FeatureCalculationPort {
   calculateAllocationDrift: typeof calculateAllocationDrift;
   calculateFIAge: typeof calculateFIAge;
   calculateCoastFire: typeof calculateCoastFire;
-  projectRetirement: typeof projectRetirement;
-  summarizeRetirementCorpus: typeof summarizeRetirementCorpus;
+  projectRetirement?: typeof projectRetirement;
+  projectDefaultRetirement?: typeof projectDefaultRetirement;
+  summarizeRetirementCorpus?: typeof summarizeRetirementCorpus;
+  retirementAssetsFromValues?: typeof retirementAssetsFromValues;
 }
 
 export interface FeatureWidgetPort {
@@ -141,7 +145,9 @@ export function createFeaturePorts(): FeaturePorts {
       calculateFIAge,
       calculateCoastFire,
       projectRetirement,
+      projectDefaultRetirement,
       summarizeRetirementCorpus,
+      retirementAssetsFromValues,
     },
     widgets: {
       renderCashflowSummary,

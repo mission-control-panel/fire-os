@@ -30,6 +30,7 @@ describe('retirement engine', () => {
       netWorth: 5_150_000,
       investableCorpus: 1_200_000,
       fireEligibleCorpus: 1_200_000,
+      netFireEligibleCorpus: 950_000,
       restrictedAssets: 300_000,
       earmarkedAssets: 500_000,
       unvestedAssets: 400_000,
@@ -58,6 +59,7 @@ describe('retirement engine', () => {
     const result = projectRetirement({ ...base, liabilities: 10_000_000 });
     expect(result.corpus.netWorth).toBe(-4_600_000);
     expect(result.corpus.fireEligibleCorpus).toBe(1_200_000);
+    expect(result.corpus.netFireEligibleCorpus).toBe(0);
   });
 
   it('marks a projection infeasible when the retirement corpus cannot cover the target', () => {
@@ -65,5 +67,36 @@ describe('retirement engine', () => {
     expect(result.status).toBe('unreachable');
     expect(result.shortfallAtRetirement).toBeGreaterThan(0);
     expect(result.sustainableThroughLifeExpectancy).toBe(false);
+  });
+
+  it('applies tax to pension and withdrawals using a gross-income contract', () => {
+    const result = projectRetirement({
+      ...base,
+      currentAge: 45,
+      retirementAge: 45,
+      lifeExpectancy: 46,
+      annualExpenses: 100,
+      annualInflation: 0,
+      expectedReturn: 0,
+      withdrawalRate: 0.04,
+      annualContribution: 0,
+      annualPensionIncome: 50,
+      taxRate: 0.2,
+    });
+    expect(result.retirementExpenses).toBe(100);
+    expect(result.requiredCorpusAtRetirement).toBeCloseTo(1_875, 8);
+  });
+
+  it('marks malformed financial inputs unavailable instead of normalizing them', () => {
+    expect(projectRetirement({ ...base, liabilities: Number.NaN }).status).toBe('unavailable');
+    expect(projectRetirement({ ...base, assets: [{ id: 'bad', value: -1, classification: 'liquid' }] }).reason).toBe('invalid-input');
+    expect(projectRetirement({ ...base, assets: [{ id: '', value: 1, classification: 'liquid' }] }).status).toBe('unavailable');
+  });
+
+  it('reports already-retired projections and preserves contribution growth', () => {
+    const retired = projectRetirement({ ...base, currentAge: 60, retirementAge: 60, lifeExpectancy: 61 });
+    expect(retired.status).toBe('already-retired');
+    const growing = projectRetirement({ ...base, currentAge: 35, retirementAge: 37, lifeExpectancy: 85, annualContribution: 100, annualContributionGrowth: 0.1, expectedReturn: 0 });
+    expect(growing.projectedCorpusAtRetirement).toBe(950_000 + 100 + 110);
   });
 });
