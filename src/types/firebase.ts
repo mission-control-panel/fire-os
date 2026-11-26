@@ -59,6 +59,7 @@ export interface PortfolioData {
   swpSchedule?: FireOSState['swpSchedule'];
   taxCalendar?: FireOSState['taxCalendar'];
   expenses?: FireOSState['expenses'];
+  transactionLedger?: FireOSState['transactionLedger'];
   netWorthHistory?: FireOSState['netWorthHistory'];
   completedActions?: FireOSState['completedActions'];
   achievedMilestones?: FireOSState['achievedMilestones'];
@@ -124,7 +125,7 @@ const persistedFields = new Set<keyof PortfolioData | 'assistant'>([
   'niftyHigh', 'niftyData', 'currencyRates', 'eurInr', 'eurInrData',   'alphaTrackerData',
   'goals',
   'fundBuckets',
-  'watchdogRules', 'swpSchedule', 'taxCalendar', 'expenses', 'netWorthHistory',
+  'watchdogRules', 'swpSchedule', 'taxCalendar', 'expenses', 'transactionLedger', 'netWorthHistory',
   'completedActions', 'achievedMilestones', 'insurance', 'esopDetails', 'liquidationRules', 'assistant',
 ]);
 
