@@ -328,6 +328,45 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
   return [...holdings.values()];
 }
 
+/**
+ * Return the current FIFO lots after applying the append-only transaction
+ * stream. Consumers that need acquisition dates must use this rather than
+ * trusting an imported snapshot of `ledger.lots`, which may still contain
+ * units consumed by later sales or transfers.
+ */
+export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
+  const queues = new Map<string, LedgerLot[]>();
+  const key = (transaction: LedgerTransaction) => `${transaction.accountId}|${transaction.instrumentId || ''}`;
+  const add = (transaction: LedgerTransaction, quantityMicros: number, costPaise: number, costProvenance: CostProvenance) => {
+    if (!transaction.instrumentId || quantityMicros <= 0) return;
+    const queue = queues.get(key(transaction)) ?? [];
+    queue.push({ id: `${transaction.id}:lot`, transactionId: transaction.id, accountId: transaction.accountId, instrumentId: transaction.instrumentId, acquiredDate: transaction.date, quantityMicros, costPaise, costProvenance });
+    queues.set(key(transaction), queue);
+  };
+  const consume = (transaction: LedgerTransaction) => {
+    const queue = queues.get(key(transaction)) ?? [];
+    let remaining = transaction.quantityMicros ?? 0;
+    while (remaining > 0 && queue.length) {
+      const lot = queue[0];
+      const consumed = Math.min(remaining, lot.quantityMicros);
+      const cost = lot.quantityMicros === consumed ? lot.costPaise : Math.round(lot.costPaise * consumed / lot.quantityMicros);
+      lot.quantityMicros -= consumed;
+      lot.costPaise -= cost;
+      remaining -= consumed;
+      if (lot.quantityMicros === 0) queue.shift();
+    }
+    if (remaining > 0) throw new Error(`Insufficient units for ${key(transaction)}`);
+    queues.set(key(transaction), queue);
+  };
+  for (const transaction of [...ledger.transactions].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
+    const quantity = transaction.quantityMicros ?? 0;
+    if (transaction.type === 'purchase' || transaction.type === 'opening_balance') add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
+    if (transaction.type === 'sale' || transaction.type === 'transfer_out') consume(transaction);
+    if (transaction.type === 'transfer_in') add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
+  }
+  return [...queues.values()].flat().filter(lot => lot.quantityMicros > 0);
+}
+
 export function applyLedgerImport(ledger: TransactionLedger, preview: LedgerImportPreview, mode: LedgerImportMode): LedgerImportResult {
   if (preview.errors.length) throw new Error(`Cannot apply invalid import: ${preview.errors[0]}`);
   const revalidated = preview.validRows.map((row, index) => validateTransaction(row, index + 2));

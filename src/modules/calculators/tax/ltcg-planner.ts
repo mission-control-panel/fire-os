@@ -1,5 +1,6 @@
 import { differenceInCalendarMonths, isValid, parse } from 'date-fns';
 import type { FireOSState } from '../../../types/state';
+import { reconcileLedgerLots } from '../../../lib/transaction-ledger';
 import { calculateTaxLotPlan, CURRENT_INDIAN_CAPITAL_GAINS_RULES, type TaxLot, type TaxLotHarvestPlan } from './tax-lot-engine';
 
 export interface FundHarvestRecommendation {
@@ -33,15 +34,19 @@ export interface TaxHarvestPlan {
   assumptions: string[];
 }
 
-function ledgerLotsForState(state: FireOSState): TaxLot[] {
+function ledgerLotsForState(state: FireOSState, asOf: Date): TaxLot[] {
   const ledger = state.transactionLedger;
-  if (!ledger?.lots?.length) return [];
+  if (!ledger?.lots?.length && !ledger?.transactions?.length) return [];
   const lots: TaxLot[] = [];
+  const currentLots = ledger.transactions.length > 0 ? reconcileLedgerLots(ledger) : ledger.lots;
   for (const [fundKey, fund] of Object.entries(state.sip || {})) {
     if (!fund) continue;
     const nav = fund.schemeCode ? state.nav[fund.schemeCode]?.nav : undefined;
     if (!Number.isFinite(nav) || (nav ?? 0) <= 0) continue;
-    for (const lot of ledger.lots) {
+    const navRecord = fund.schemeCode ? state.nav[fund.schemeCode] : undefined;
+    const navTime = navRecord ? Date.parse(navRecord.timestamp) : Number.NaN;
+    const navFresh = Boolean(navRecord && Number.isFinite(navTime) && navTime <= asOf.getTime() && asOf.getTime() - navTime <= navRecord.ttl && navRecord.status !== 'stale' && navRecord.status !== 'manual');
+    for (const lot of currentLots) {
       const instrument = ledger.instruments[lot.instrumentId];
       const matches = [fundKey, fund.schemeCode, fund.name].filter(Boolean).includes(lot.instrumentId)
         || instrument?.name === fund.name;
@@ -58,7 +63,7 @@ function ledgerLotsForState(state: FireOSState): TaxLot[] {
         units: lot.quantityMicros / 1_000_000,
         costBasis: lot.costPaise / 100,
         currentNAV: nav ?? 0,
-        dataQuality: lot.costProvenance === 'exact' ? 'exact' : 'estimated',
+        dataQuality: lot.costProvenance === 'exact' && navFresh ? 'exact' : 'estimated',
       });
     }
   }
@@ -119,12 +124,10 @@ export function calculateLTCGHarvestPlan(
   state: FireOSState,
   now: Date = new Date()
 ): TaxHarvestPlan {
-  const ledgerLots = ledgerLotsForState(state);
+  const ledgerLots = ledgerLotsForState(state, now);
   if (ledgerLots.length > 0) {
-    const configuredLimit = state.taxCalendar?.harvestTarget;
-    const rules = configuredLimit && configuredLimit > 0
-      ? { ...CURRENT_INDIAN_CAPITAL_GAINS_RULES, section112aExemption: configuredLimit }
-      : CURRENT_INDIAN_CAPITAL_GAINS_RULES;
+    const configuredLimit = state.taxCalendar?.harvestTarget ?? 0;
+    const rules = { ...CURRENT_INDIAN_CAPITAL_GAINS_RULES, section112aExemption: configuredLimit };
     return fromTaxLotPlan(calculateTaxLotPlan({
       lots: ledgerLots,
       asOf: now,
