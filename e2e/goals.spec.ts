@@ -38,6 +38,10 @@ test.describe('goals route', () => {
     ).toBeVisible();
     await expect(dialog.getByText('Enter a target above ₹10')).toBeVisible();
     await expect(dialog.getByText('Pick a target month.')).toBeVisible();
+
+    await dialog.getByLabel('Monthly contribution (optional)').fill('-1');
+    await dialog.getByRole('button', { name: 'Create goal' }).click();
+    await expect(dialog.getByText('Enter a non-negative monthly contribution.')).toBeVisible();
   });
 
   test('a saved goal renders as a data row with progress, not a prose list', async ({ page }) => {
@@ -56,12 +60,15 @@ test.describe('goals route', () => {
     await expect(row).toBeVisible();
 
     // Figures render through the Indian ₹ formatter (crore above 10M), not raw
-    // toLocaleString. Target and Shortfall are both ₹12Cr, so scope to the column.
-    await expect(row.getByRole('cell', { name: '₹12Cr', exact: true }).first()).toBeVisible();
-    await expect(row.getByRole('cell', { name: '₹10', exact: true })).toBeVisible();
+    // toLocaleString. The entered target is ₹2Cr and the new goal starts at ₹0.
+    await expect(row.getByRole('cell', { name: '₹2Cr', exact: true }).first()).toBeVisible();
+    await expect(row.getByRole('cell', { name: '₹0', exact: true })).toBeVisible();
     await expect(
       row.getByRole('progressbar', { name: 'Coorg house funding progress' }),
     ).toHaveAttribute('aria-valuenow', '0');
     await expect(row.getByText('Shortfall', { exact: false })).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByRole('row', { name: /Coorg house/ })).toBeVisible();
   });
 });

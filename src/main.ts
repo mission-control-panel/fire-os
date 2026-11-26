@@ -278,7 +278,20 @@ function renderApp() {
       </div>
     </nav>
 
-<div id="auth-screen"></div>
+    <div id="auth-screen"></div>
+
+    <!-- React owns migrated routes such as Dashboard and Goals. The remaining
+         legacy modules still need stable containers while the migration bridge
+         activates them inside the React shell. Keep migrated ids out of this
+         collection so React and the legacy DOM never duplicate an id. -->
+    <div id="legacy-tabs" class="tabs-container">
+      <div id="profile" class="tab active"></div>
+      <div id="calculators" class="tab"></div>
+      <div id="insurance" class="tab"></div>
+      <div id="plan" class="tab"></div>
+      <div id="esop" class="tab"></div>
+      <div id="assistant" class="tab"></div>
+    </div>
   `;
 
 // Initialize and render auth screen

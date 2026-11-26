@@ -1,6 +1,6 @@
-# Copy-ready issue and comment examples
+# Historical copy-ready GitHub issue and comment examples
 
-**Execution model:** The human owner manually invokes or schedules Codex, OpenCode, ChatGPT Work, or another tool as a Chief/Worker session. The session reads the live GitHub Project and selects eligible work. GitHub never starts an AI model when a role label changes. Use a unique per-session claim and reconcile overlapping claims before doing work.
+**Execution model:** The human owner manually invokes or schedules Codex, OpenCode, ChatGPT Work, or another tool as a Chief/Worker session. For FIRE OS, the session reads the live Trello card and selects eligible work; GitHub examples below are supporting metadata/evidence only. GitHub never starts an AI model when a role label changes. Use a unique per-session claim and reconcile overlapping claims before doing work.
 
 
 These are **examples only**. Replace numbers, SHA values, and links. Never assert that a test ran or approval happened because the example contains those words.

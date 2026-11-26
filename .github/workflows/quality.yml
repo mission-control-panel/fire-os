@@ -9,6 +9,30 @@ permissions:
   contents: read
 
 jobs:
+  gitleaks:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository history
+        shell: bash
+        run: |
+          set +e
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            zricethezav/gitleaks:latest \
+            detect --source=/repo --no-banner --redact \
+            --report-format json --report-path=/repo/.gitleaks-report.json
+          status=$?
+          if [[ -s .gitleaks-report.json ]]; then
+            jq -r '.[] | "Finding: \(.RuleID) at \(.File):\(.StartLine)-\(.EndLine)"' .gitleaks-report.json
+          fi
+          rm -f .gitleaks-report.json
+          exit "$status"
+
   verify:
     runs-on: ubuntu-latest
     steps:

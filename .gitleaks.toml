@@ -1,0 +1,7 @@
+title = "FIRE OS Gitleaks policy"
+
+[allowlist]
+description = "Firebase web API keys are public client configuration; the profile path contains a verified historical false positive. Server credentials remain unallowlisted."
+regexTarget = "secret"
+regexes = ['''AIza[0-9A-Za-z_-]{35}''']
+paths = ['''(^|/)src/modules/profile/index\.ts$''']
