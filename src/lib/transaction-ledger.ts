@@ -336,20 +336,23 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
  */
 export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
   const queues = new Map<string, LedgerLot[]>();
+  const transferred = new Map<string, LedgerLot[]>();
   const key = (transaction: LedgerTransaction) => `${transaction.accountId}|${transaction.instrumentId || ''}`;
-  const add = (transaction: LedgerTransaction, quantityMicros: number, costPaise: number, costProvenance: CostProvenance) => {
+  const add = (transaction: LedgerTransaction, quantityMicros: number, costPaise: number, costProvenance: CostProvenance, acquiredDate = transaction.date, suffix = '') => {
     if (!transaction.instrumentId || quantityMicros <= 0) return;
     const queue = queues.get(key(transaction)) ?? [];
-    queue.push({ id: `${transaction.id}:lot`, transactionId: transaction.id, accountId: transaction.accountId, instrumentId: transaction.instrumentId, acquiredDate: transaction.date, quantityMicros, costPaise, costProvenance });
+    queue.push({ id: `${transaction.id}:lot${suffix}`, transactionId: transaction.id, accountId: transaction.accountId, instrumentId: transaction.instrumentId, acquiredDate, quantityMicros, costPaise, costProvenance });
     queues.set(key(transaction), queue);
   };
-  const consume = (transaction: LedgerTransaction) => {
+  const consume = (transaction: LedgerTransaction): LedgerLot[] => {
     const queue = queues.get(key(transaction)) ?? [];
     let remaining = transaction.quantityMicros ?? 0;
+    const consumedLots: LedgerLot[] = [];
     while (remaining > 0 && queue.length) {
       const lot = queue[0];
       const consumed = Math.min(remaining, lot.quantityMicros);
       const cost = lot.quantityMicros === consumed ? lot.costPaise : Math.round(lot.costPaise * consumed / lot.quantityMicros);
+      consumedLots.push({ ...lot, id: `${lot.id}:consumed`, quantityMicros: consumed, costPaise: cost });
       lot.quantityMicros -= consumed;
       lot.costPaise -= cost;
       remaining -= consumed;
@@ -357,12 +360,28 @@ export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
     }
     if (remaining > 0) throw new Error(`Insufficient units for ${key(transaction)}`);
     queues.set(key(transaction), queue);
+    return consumedLots;
   };
   for (const transaction of [...ledger.transactions].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
     const quantity = transaction.quantityMicros ?? 0;
     if (transaction.type === 'purchase' || transaction.type === 'opening_balance') add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
-    if (transaction.type === 'sale' || transaction.type === 'transfer_out') consume(transaction);
-    if (transaction.type === 'transfer_in') add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
+    if (transaction.type === 'sale') consume(transaction);
+    if (transaction.type === 'transfer_out') transferred.set(transaction.id, consume(transaction));
+    if (transaction.type === 'transfer_in') {
+      const carried = transaction.linkedTransactionId ? transferred.get(transaction.linkedTransactionId) : undefined;
+      if (carried?.length) {
+        for (const [index, lot] of carried.entries()) add(transaction, lot.quantityMicros, lot.costPaise, lot.costProvenance, lot.acquiredDate, `:transfer-${index}`);
+      } else add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
+    }
+    if (transaction.type === 'split') {
+      if (!transaction.splitRatioNumerator || !transaction.splitRatioDenominator) throw new Error(`Split ratio is required for ${transaction.id}`);
+      const queue = queues.get(key(transaction)) ?? [];
+      for (const lot of queue) {
+        const splitQuantity = Math.round(lot.quantityMicros * transaction.splitRatioNumerator / transaction.splitRatioDenominator);
+        if (!Number.isSafeInteger(splitQuantity)) throw new Error(`Invalid split quantity for ${transaction.id}`);
+        lot.quantityMicros = splitQuantity;
+      }
+    }
   }
   return [...queues.values()].flat().filter(lot => lot.quantityMicros > 0);
 }

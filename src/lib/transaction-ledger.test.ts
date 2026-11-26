@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyLedgerImport, createTransactionLedger, previewLedgerImport, reconcileLedger, rollbackLedgerImport } from './transaction-ledger';
+import { applyLedgerImport, createTransactionLedger, previewLedgerImport, reconcileLedger, reconcileLedgerLots, rollbackLedgerImport } from './transaction-ledger';
 
 const purchase = (id: string, amountPaise = 125_000, quantityMicros = 10_000): Record<string, unknown> => ({
   id, date: '2026-04-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise, quantityMicros, costProvenance: 'exact',
@@ -70,5 +70,30 @@ describe('transaction ledger', () => {
     const preview = previewLedgerImport([{ ...purchase('opening'), type: 'opening_balance', amountPaise: 0, costProvenance: 'unknown' }]);
     const { ledger } = applyLedgerImport(createTransactionLedger(), preview, 'merge');
     expect(reconcileLedger(ledger)[0].costProvenance).toBe('unknown');
+  });
+
+  it('carries transfer provenance through to the destination lot', () => {
+    const ledger = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-old', 100_000, 10_000), date: '2024-01-01' },
+        { id: 'move-out', dedupKey: 'move-out', date: '2025-01-02', type: 'transfer_out' as const, accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 10_000, costProvenance: 'exact' as const },
+        { id: 'move-in', dedupKey: 'move-in', date: '2025-01-03', type: 'transfer_in' as const, accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out', amountPaise: 0, quantityMicros: 10_000, costProvenance: 'unknown' as const },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)).toEqual([{ id: 'move-in:lot:transfer-0', transactionId: 'move-in', accountId: 'new-brokerage', instrumentId: 'fund-a', acquiredDate: '2024-01-01', quantityMicros: 10_000, costPaise: 100_000, costProvenance: 'exact' }]);
+  });
+
+  it('applies stock splits without resetting acquisition cost or date', () => {
+    const ledger = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-split', 100_000, 10_000), date: '2024-01-01' },
+        { id: 'split-1', dedupKey: 'split-1', date: '2025-01-02', type: 'split' as const, accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 0, costProvenance: 'unknown' as const, splitRatioNumerator: 2, splitRatioDenominator: 1 },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)[0]).toMatchObject({ acquiredDate: '2024-01-01', quantityMicros: 20_000, costPaise: 100_000 });
   });
 });

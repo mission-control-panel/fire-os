@@ -38,7 +38,12 @@ function ledgerLotsForState(state: FireOSState, asOf: Date): TaxLot[] {
   const ledger = state.transactionLedger;
   if (!ledger?.lots?.length && !ledger?.transactions?.length) return [];
   const lots: TaxLot[] = [];
-  const currentLots = ledger.transactions.length > 0 ? reconcileLedgerLots(ledger) : ledger.lots;
+  let currentLots;
+  try {
+    currentLots = ledger.transactions.length > 0 ? reconcileLedgerLots(ledger) : ledger.lots;
+  } catch {
+    return [];
+  }
   for (const [fundKey, fund] of Object.entries(state.sip || {})) {
     if (!fund) continue;
     const nav = fund.schemeCode ? state.nav[fund.schemeCode]?.nav : undefined;

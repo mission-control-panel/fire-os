@@ -115,4 +115,17 @@ describe('calculateLTCGHarvestPlan month boundaries', () => {
 
     expect(plan.dataQuality).toBe('estimated');
   });
+
+  it('falls back to an estimate when the transaction stream is incomplete', () => {
+    const state = initializeState();
+    state.sip = { fund: { name: 'Fund', schemeCode: '123', units: 100, startDate: '2024-01', monthlyAmount: 100 } };
+    state.nav = { '123': { schemeCode: '123', nav: 1_500, timestamp: '2026-04-01T00:00:00Z', ttl: 3600000 } };
+    state.transactionLedger.instruments = { '123': { id: '123', name: 'Fund', assetClass: 'equity-mutual-fund', currency: 'INR' } };
+    state.transactionLedger.transactions = [{ id: 'sale-only', dedupKey: 'sale-only', date: '2025-01-02', type: 'sale', accountId: 'account', instrumentId: '123', amountPaise: 4_000_000, quantityMicros: 40_000_000, costProvenance: 'exact' }];
+
+    const plan = calculateLTCGHarvestPlan(state, new Date('2026-04-01T00:00:00Z'));
+
+    expect(plan.dataQuality).toBe('estimated');
+    expect(plan.assumptions).toContain('Dated acquisition lots are unavailable; the legacy SIP-age estimate is shown.');
+  });
 });
