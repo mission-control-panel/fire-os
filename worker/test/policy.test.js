@@ -135,9 +135,15 @@ describe('validateRequestBody', () => {
 });
 
 describe('extractProposedChanges', () => {
-  it('extracts a minimal partial state from a model reply', () => {
-    const reply = 'I suggest this change: {"profile":{"fiTarget":60000000}}';
+  it('extracts a minimal partial state from a structured JSON reply', () => {
+    const reply = '```json\n{"profile":{"fiTarget":60000000}}\n```';
     expect(extractProposedChanges(reply)).toEqual({ profile: { fiTarget: 60000000 } });
+  });
+
+  it('rejects JSON embedded in prose instead of scanning it greedily', () => {
+    expect(
+      extractProposedChanges('I suggest this change: {"profile":{"fiTarget":60000000}}'),
+    ).toBeNull();
   });
 
   it('strips runtime fields and underscore-prefixed keys', () => {

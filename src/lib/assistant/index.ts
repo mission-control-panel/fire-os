@@ -4,6 +4,7 @@
 export * from './sanitize';
 export * from './consent';
 export * from './proposal';
+export * from './undo';
 export * from './audit';
 export { queryAssistant, AssistantRequestError, normalizeConversationMessages } from './client';
 export type { AssistantConversationMessage, AssistantQueryResponse } from './client';

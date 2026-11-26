@@ -282,7 +282,7 @@ describe('Assistant Worker', () => {
             {
               message: {
                 content:
-                  'Suggested update: {"profile":{"age":40},"currentUser":"ignored","unknown":"ignored"}',
+                  '```json\n{"profile":{"age":40},"currentUser":"ignored","unknown":"ignored"}\n```',
               },
             },
           ],
@@ -310,7 +310,7 @@ describe('Assistant Worker', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      reply: 'Suggested update: {"profile":{"age":40},"currentUser":"ignored","unknown":"ignored"}',
+      reply: '```json\n{"profile":{"age":40},"currentUser":"ignored","unknown":"ignored"}\n```',
       proposedChanges: { profile: { age: 40 } },
     });
     expect(payload.models).toEqual(['openrouter/free', 'fallback/model:free']);
