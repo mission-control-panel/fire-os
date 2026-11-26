@@ -96,6 +96,23 @@ describe('transaction ledger', () => {
     };
 
     expect(reconcileLedgerLots(ledger)).toMatchObject([{ quantityMicros: 40_000, costPaise: 40_000, acquiredDate: '2024-01-01' }]);
+    expect(reconcileLedger(ledger)).toEqual([
+      { accountId: 'new-brokerage', instrumentId: 'fund-a', quantityMicros: 40_000, costPaise: 40_000, costProvenance: 'exact' },
+    ]);
+  });
+
+  it('does not turn an explicit zero-unit transfer into a full transfer', () => {
+    const ledger: ReturnType<typeof createTransactionLedger> = {
+      ...createTransactionLedger(),
+      transactions: [
+        { ...purchase('buy-zero-transfer', 100_000, 100_000), date: '2024-01-01' },
+        { id: 'move-out-zero', dedupKey: 'move-out-zero', date: '2025-01-02', type: 'transfer_out', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 100_000, quantityMicros: 100_000, costProvenance: 'exact' },
+        { id: 'move-in-zero', dedupKey: 'move-in-zero', date: '2025-01-03', type: 'transfer_in', accountId: 'new-brokerage', instrumentId: 'fund-a', linkedTransactionId: 'move-out-zero', amountPaise: 0, quantityMicros: 0, costProvenance: 'unknown' },
+      ],
+    };
+
+    expect(reconcileLedgerLots(ledger)).toEqual([]);
+    expect(reconcileLedger(ledger)).toEqual([]);
   });
 
   it('resolves same-day linked transfers before lexical ID order', () => {

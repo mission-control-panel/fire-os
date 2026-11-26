@@ -300,7 +300,7 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
     addHolding(transaction, -quantity, -consumedCost, provenance);
     return { costPaise: consumedCost, costProvenance: provenance };
   };
-  const transferCosts = new Map<string, { costPaise: number; costProvenance: CostProvenance }>();
+  const transferCosts = new Map<string, { quantityMicros: number; costPaise: number; costProvenance: CostProvenance }>();
   const transactions = [...ledger.transactions].sort((a, b) => {
     const dateOrder = a.date.localeCompare(b.date);
     if (dateOrder !== 0) return dateOrder;
@@ -313,11 +313,16 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
     if (transaction.type === 'purchase' || transaction.type === 'opening_balance') addLot(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     if (transaction.type === 'transfer_out') {
       const consumed = consumeLots(transaction, quantity);
-      transferCosts.set(transaction.id, consumed);
+      transferCosts.set(transaction.id, { quantityMicros: quantity, ...consumed });
     }
     if (transaction.type === 'transfer_in') {
       const carried = transaction.linkedTransactionId ? transferCosts.get(transaction.linkedTransactionId) : undefined;
-      addLot(transaction, quantity, carried?.costPaise ?? transaction.amountPaise, carried?.costProvenance ?? transaction.costProvenance);
+      if (carried) {
+        const incomingQuantity = transaction.quantityMicros === undefined ? carried.quantityMicros : quantity;
+        if (incomingQuantity > carried.quantityMicros) throw new Error(`Transfer-in quantity exceeds linked transfer for ${transaction.id}`);
+        const incomingCost = carried.quantityMicros === incomingQuantity ? carried.costPaise : Math.round(carried.costPaise * incomingQuantity / carried.quantityMicros);
+        addLot(transaction, incomingQuantity, incomingCost, carried.costProvenance);
+      } else addLot(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
     }
     if (transaction.type === 'sale') consumeLots(transaction, quantity);
     if (transaction.type === 'split') {
@@ -332,7 +337,7 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
       for (const lot of queue) lot.quantityMicros = Math.round(lot.quantityMicros * transaction.splitRatioNumerator / transaction.splitRatioDenominator);
     }
   }
-  return [...holdings.values()];
+  return [...holdings.values()].filter((holding) => holding.quantityMicros !== 0);
 }
 
 /**
@@ -384,7 +389,9 @@ export function reconcileLedgerLots(ledger: TransactionLedger): LedgerLot[] {
     if (transaction.type === 'transfer_in') {
       const carried = transaction.linkedTransactionId ? transferred.get(transaction.linkedTransactionId) : undefined;
       if (carried?.length) {
-        let remaining = quantity || carried.reduce((sum, lot) => sum + lot.quantityMicros, 0);
+        let remaining = transaction.quantityMicros === undefined
+          ? carried.reduce((sum, lot) => sum + lot.quantityMicros, 0)
+          : quantity;
         for (const [index, lot] of carried.entries()) {
           if (remaining <= 0) break;
           const carriedQuantity = Math.min(remaining, lot.quantityMicros);
