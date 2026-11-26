@@ -41,11 +41,13 @@ Create these **exact, lowercase GitHub issue labels** in each repository: `chief
 - `human` means an evidenced human-only dependency (credentials/physical test/owner risk acceptance/legal decision/account or hardware action). Chief sets/clears it; **human never needs to change labels**. Chief remains responsible while waiting and must inspect new comments/evidence to decide whether to clear it.
 - If any invariant is violated, halt automated execution of that issue and route to Chief for reconciliation; never infer the intended role from a free-text comment alone.
 
-## 3. Github Project configuration and status machine
+## 3. Historical GitHub Project metadata (supporting evidence only)
 
-Create a GitHub **Projects v2** Project for each product/repository (or one deliberate cross-repo product Project). Give only authorized agents access to its issues and Projects fields. Configure these fields and saved views:
+The following GitHub Projects v2 model is retained as historical metadata guidance for repositories that still expose it. It is not the FIRE OS workflow authority: Trello owns task identity, lifecycle status, priority, dependencies and claims. Do not create, configure or reconcile a GitHub Project as a prerequisite for FIRE OS implementation unless the owner explicitly requests a separate metadata operation. Any GitHub Project membership or field value must be read back and reported as supporting evidence; it must never override Trello.
 
-- **Status** *(canonical lifecycle)*: `Backlog`, `Ready`, `In Progress`, `Blocked`, `In Review`, `Done`, `Canceled`.
+If a GitHub Project is deliberately used for a separate, owner-authorized metadata operation, give only authorized agents access to its issues and Projects fields. Its optional mirror fields are:
+
+- **Status** *(non-authoritative mirror)*: `Backlog`, `Ready`, `In Progress`, `Blocked`, `In Review`, `Done`, `Canceled`.
 - **Priority**: `P0 Critical`, `P1 High`, `P2 Medium`, `P3 Low` (choose a single scheme and document it).
 - **Risk**: `Normal`, `Elevated`, `Critical`.
 - **Type** (optional): `Research`, `Architecture`, `Implementation`, `Bug`, `Verification`, `Governance`, `Release`.
@@ -62,9 +64,9 @@ Create a GitHub **Projects v2** Project for each product/repository (or one deli
 | In Review | Done | Chief: gates satisfied, authorized merge executed and read back, closeout evidence recorded |
 | Any nonterminal | Canceled | Chief: explicit rationale, links to replacement/duplicate and owner approval if consequential |
 
-**Status is changed in the GitHub Project field, not a second label or separate tracker.** GitHub issue open/closed is an intentionally limited projection: open for everything except `Done`/`Canceled`; close only after the corresponding exit gate. Do not treat a closed issue, a green CI run, or a 'Done' Project value alone as proof of acceptance. Configure built-in automation conservatively, and reconcile Project status against issue state (GitHub's automatic close→Done flow can otherwise hide a premature close).
+**For FIRE OS, status is changed on the Trello board, not in a GitHub Project field.** GitHub issue open/closed remains an intentionally limited historical projection; do not treat a closed issue, a green CI run, or a `Done` Project value alone as proof of acceptance. If an owner-authorized metadata operation uses built-in automation, configure it conservatively and record the read-back without allowing it to compete with Trello.
 
-Chief checks each new issue is in exactly the intended Project. Configure Project auto-add for future issues, **backfill pre-existing issues separately**, and verify the Project's actual item list. **Exception:** a `worker + metadata-bootstrap` issue may be selected by an owner-invoked Worker from an **explicitly authorized repository-backed bootstrap queue or single-issue request**, solely to verify/add its Project membership and approved metadata. Ordinary implementation work is NEVER selected from repository search without Project membership and `Ready` read-back.
+For any owner-authorized metadata operation, verify the Project's actual item list and report membership explicitly. **Exception:** a `worker + metadata-bootstrap` issue may be selected by an owner-invoked Worker from an **explicitly authorized repository-backed bootstrap queue or single-issue request**, solely to verify/add its Project membership and approved metadata. Ordinary FIRE OS implementation work is selected from Trello and never from repository search or GitHub Project status.
 
 ## 4. Chief — plan, research, decide, hand off, review
 
