@@ -20,12 +20,18 @@ import { metaForPath } from './routes/route-meta';
 export function AppLayout() {
   const location = useLocation();
   const legacyMount = useRef<HTMLDivElement>(null);
+  const mobileNavigation = useRef<HTMLDetailsElement>(null);
+  const mobileNavigationSummary = useRef<HTMLElement>(null);
 
   // React Router navigates without a popstate event, so the legacy tabs are told
   // about the change here. Routes claim the container id themselves once migrated,
   // in which case this is a no-op.
   useEffect(() => {
     syncLegacyTab(metaForPath(location.pathname).id);
+    if (mobileNavigation.current?.open) {
+      mobileNavigation.current.open = false;
+      mobileNavigationSummary.current?.focus();
+    }
   }, [location.pathname]);
 
   // `#app` is a sibling of `#app-root` in index.html. Move it into the content pane
@@ -44,8 +50,10 @@ export function AppLayout() {
       <AppHeader />
 
       <div className="flex flex-1 flex-col lg:flex-row">
-        <details className="border-b border-(--color-border) lg:hidden">
+        <details ref={mobileNavigation} className="border-b border-(--color-border) lg:hidden">
           <summary
+            ref={mobileNavigationSummary}
+            aria-controls="mobile-primary-navigation"
             aria-label="Toggle navigation menu"
             className="flex cursor-pointer list-none items-center px-3 py-2
                        focus-visible:outline-2 focus-visible:outline-offset-2
@@ -64,11 +72,11 @@ export function AppLayout() {
               <path d="M4 7h16M4 12h16M4 17h16" />
             </svg>
           </summary>
-          <Sidebar />
+          <Sidebar navId="mobile-primary-navigation" />
         </details>
 
         <aside className="hidden w-56 shrink-0 border-r border-(--color-border) lg:block">
-          <Sidebar />
+          <Sidebar navId="desktop-primary-navigation" />
         </aside>
 
         <main className="flex-1 p-3 lg:p-6">
