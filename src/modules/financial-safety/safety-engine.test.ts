@@ -124,6 +124,20 @@ describe('crash protocol', () => {
     expect(huge.status).toBe('unavailable');
   });
 
+  it('rejects crash levels above a 100% drawdown trigger', () => {
+    const liquidity = analyzeLiquidity({
+      monthlyEssentialExpenses: 50_000,
+      assets: [{ id: 'cash', kind: 'cash', value: 1_000_000, valuation: 'current' }],
+    });
+    const result = analyzeCrashProtocol({
+      liquidity,
+      currentDrawdownPercent: 20,
+      levels: [{ drawdownTriggerPercent: 101, deploymentPercent: 10 }],
+    });
+    expect(result.status).toBe('unavailable');
+    expect(result.reason).toBe('invalid-input');
+  });
+
   it('rejects manual and future market timestamps as fresh drawdown inputs', () => {
     const state = initializeState();
     state.profile.annualExpenses = 50_000;

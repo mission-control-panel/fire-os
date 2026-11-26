@@ -705,7 +705,11 @@ cover the withdrawal. A manual simulator awaits cloud persistence.
   `profile.annualExpenses` value; missing expenses or stale/missing valuations
   show `Unavailable` rather than zero. The default crash protocol preserves 12
   months of essential expenses and caps cumulative deployment; each level is a
-  read-only recommendation and cannot record a transaction. Allocation drift is
+  read-only recommendation and cannot record a transaction. The calculator does
+  not offer an asset selector because crash amounts are calculated from the
+  shared accessible-liquidity total; when valuation coverage is incomplete, the
+  emergency-runway component breakdown is also shown as `Unavailable` rather
+  than a partial total. Allocation drift is
   calculated against the user-owned fund-bucket targets and is suppressed when
   valuation coverage is incomplete.
 - **Expense tracker:** adds/display persisted expenses from dashboard modal.

@@ -204,7 +204,8 @@ export function analyzeCrashProtocol(input: CrashProtocolInput): CrashProtocolAn
   const cumulativeCapPercent = input.cumulativeCapPercent ?? 100;
   const levels = input.levels ?? DEFAULT_LEVELS;
   if (!finiteNonNegative(reserveMonths) || !finiteNonNegative(cumulativeCapPercent) || cumulativeCapPercent > 100
-    || !levels.length || levels.some(level => !finiteNonNegative(level.drawdownTriggerPercent) || !finiteNonNegative(level.deploymentPercent) || level.deploymentPercent > 100)) {
+    || !levels.length || levels.some(level => !finiteNonNegative(level.drawdownTriggerPercent) || level.drawdownTriggerPercent > 100
+      || !finiteNonNegative(level.deploymentPercent) || level.deploymentPercent > 100)) {
     return { status: 'unavailable', reason: 'invalid-input', reserveMonths, reserveAmount: null, crashFund: null, cumulativeCap: null, levels: [] };
   }
   if (input.liquidity.status !== 'available' || input.liquidity.accessibleValue === null || input.liquidity.monthlyEssentialExpenses === null) {
