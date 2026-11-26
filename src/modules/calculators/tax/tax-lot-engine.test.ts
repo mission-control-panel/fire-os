@@ -16,7 +16,8 @@ describe('tax lot engine', () => {
 
   it('classifies a unit only after its configured holding period', () => {
     expect(isLongTermOnDate('2025-01-31', new Date('2026-01-30T00:00:00Z'), 'equity-mutual-fund')).toBe(false);
-    expect(isLongTermOnDate('2025-01-31', new Date('2026-01-31T00:00:00Z'), 'equity-mutual-fund')).toBe(true);
+    expect(isLongTermOnDate('2025-01-31', new Date('2026-01-31T00:00:00Z'), 'equity-mutual-fund')).toBe(false);
+    expect(isLongTermOnDate('2025-01-31', new Date('2026-02-01T00:00:00Z'), 'equity-mutual-fund')).toBe(true);
   });
 
   it('computes exact lots, realized losses, and capped harvest allowance', () => {

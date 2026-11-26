@@ -138,7 +138,7 @@ export function calculateTaxLotPlan(input: {
     const currentValue = lot.units * lot.currentNAV;
     const gain = currentValue - lot.costBasis - (lot.fees ?? 0);
     const threshold = rules.holdingPeriodMonths[lot.assetClass];
-    const eligible = threshold !== undefined && period >= threshold;
+    const eligible = threshold !== undefined && isLongTermOnDate(lot.acquiredDate, input.asOf, lot.assetClass, rules) === true;
     if (lot.dataQuality !== 'exact') exact = false;
     totalCurrentValue += currentValue;
     if (eligible) totalLtcgGains += Math.max(0, gain);
@@ -182,5 +182,5 @@ export function calculateTaxLotPlan(input: {
 export function isLongTermOnDate(acquiredDate: string, saleDate: Date, assetClass: TaxAssetClass, rules = CURRENT_INDIAN_CAPITAL_GAINS_RULES): boolean | null {
   const period = holdingPeriodMonths(acquiredDate, saleDate);
   const threshold = rules.holdingPeriodMonths[assetClass];
-  return period === null || threshold === undefined ? null : period >= threshold && isAfter(saleDate, addMonths(parseISO(acquiredDate), threshold - 1));
+  return period === null || threshold === undefined ? null : isAfter(saleDate, addMonths(parseISO(acquiredDate), threshold));
 }
