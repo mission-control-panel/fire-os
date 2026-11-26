@@ -138,6 +138,54 @@ describe('portfolio Firestore rules', () => {
     }));
   });
 
+  it('denies out-of-range profile and mutual-fund values at the rules boundary', async () => {
+    const db = testEnvironment.authenticatedContext('owner-ranges').firestore();
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      data: { profile: { name: 'Test', age: 999, annualExpenses: 1, fiTarget: 1, monthlyIncome: 1 } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state/holdings/fund-1'), {
+      kind: 'mf',
+      value: { name: 'Example Fund', units: -1, startDate: '2026-01', monthlyAmount: 1000 },
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state/holdings/fund-2'), {
+      kind: 'mf',
+      value: { name: 'Example Fund', units: 1, startDate: '2026-1', monthlyAmount: 1000 },
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state/holdings/fund-4'), {
+      kind: 'mf',
+      value: { name: 'Example Fund', units: 1, startDate: '2026-13', monthlyAmount: 1000 },
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      data: { profile: { name: 'Test', age: 'unknown', annualExpenses: 1, fiTarget: 1, monthlyIncome: 1 } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      data: { profile: { name: 'Test', age: 30, annualExpenses: 1 } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      data: { profile: { name: 'Test', age: 30, annualExpenses: 1000000000001, fiTarget: 1, monthlyIncome: 1 } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      data: { profile: { name: 'Test', age: 30, annualExpenses: 1, fiTarget: 1000000000000001, monthlyIncome: 1 } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      data: { profile: { name: 'Test', age: 30, annualExpenses: 1, fiTarget: 1, monthlyIncome: 1, extra: true } },
+    }));
+    await assertSucceeds(setDoc(doc(db, 'users/owner-ranges/portfolio/state/holdings/fund-3'), {
+      kind: 'mf',
+      value: { name: 'Example Fund', units: 1, startDate: '2026-01-15', monthlyAmount: 1000 },
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }));
+  });
+
   it('denies inline dynamic map values and malformed timestamp maps', async () => {
     const db = testEnvironment.authenticatedContext('owner-dynamic').firestore();
     await assertFails(setDoc(doc(db, 'users/owner-dynamic/portfolio/state'), {

@@ -363,7 +363,15 @@ content is validated by `validEsopDetails()` (allowlisted keys with required
 matching the client `esopDetails` Zod schema. Client
 `isPersistedPortfolioData()` does stricter nested
 validation for locally loaded/updated data. Keep both rule emulator tests and
-client validator tests when changing schema.
+client validator tests when changing schema. The rules also require the profile's
+core keys and numeric field types, reject out-of-range ages and financial-year
+targets/expenses, reject negative or implausibly large MF units, monthly
+amounts and cost bases, and require MF `startDate` values in the supported
+`YYYY-MM` or `YYYY-MM-DD` forms. The optional `format` envelope remains
+allowlisted for backward compatibility and is validated by the client schema;
+invoking its full rules predicate together with the expanded profile predicate
+currently exceeds Firestore's per-request expression budget and is tracked as
+follow-up rules refactoring.
 
 ## External service contracts and refresh triggers
 
@@ -418,7 +426,8 @@ covered by [AI](ai.md).
 paths to index, ignores docs/source metadata. Headers set CSP with local scripts
 plus Google auth scripts, inline script/style allowances, allowed Firebase,
 MFAPI and Worker `connect-src`; PDF worker may run from self or
-blob. COOP is `same-origin-allow-popups`, X-Frame-Options DENY,
+blob. CSP also restricts document bases, embedded objects and form targets.
+COOP is `same-origin-allow-popups`, X-Frame-Options DENY,
 frame-ancestors none, nosniff, strict-origin referrer and no camera/microphone/
 geolocation. Google popup behavior depends on the COOP setting.
 

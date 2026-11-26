@@ -26,16 +26,15 @@ service cloud.firestore {
 
     function validProfile(value) {
       return value is map
-        && value.keys().hasOnly(['name', 'dateOfBirth', 'age', 'taxSlabRate', 'annualExpenses', 'fiTarget', 'monthlyIncome'])
+        && value.size() == 5 + (('dateOfBirth' in value) ? 1 : 0) + (('taxSlabRate' in value) ? 1 : 0)
         && value.keys().hasAll(['name', 'age', 'annualExpenses', 'fiTarget', 'monthlyIncome'])
-        && value.size() <= 7
-        && isBoundedString(value.name, 200)
-        && (!('dateOfBirth' in value) || isBoundedString(value.dateOfBirth, 10))
-        && value.age is number
-        && (!('taxSlabRate' in value) || value.taxSlabRate is number)
-        && value.annualExpenses is number
-        && value.fiTarget is number
-        && value.monthlyIncome is number;
+        && value.name is string
+        && value.age is number && value.age >= 0 && value.age <= 150
+        && value.annualExpenses is number && value.annualExpenses >= 0 && value.annualExpenses <= 1000000000000
+        && value.fiTarget is number && value.fiTarget >= 0 && value.fiTarget <= 1000000000000000
+        && value.monthlyIncome is number
+        && (!('dateOfBirth' in value) || value.dateOfBirth is string)
+        && (!('taxSlabRate' in value) || value.taxSlabRate is number);
     }
 
     function validNiftyData(value) {
@@ -147,10 +146,10 @@ function validWatchdogRules(value) {
         && value.size() <= 7
         && isBoundedString(value.name, 200)
         && (!('schemeCode' in value) || isBoundedString(value.schemeCode, 50))
-        && value.units is number
-        && isBoundedString(value.startDate, 20)
-        && value.monthlyAmount is number
-        && (!('costBasis' in value) || value.costBasis is number)
+        && value.units is number && value.units >= 0 && value.units <= 1000000000000
+        && isBoundedString(value.startDate, 20) && value.startDate.matches('^\\d{4}-(0[1-9]|1[0-2])(-((0[1-9]|[12]\\d|3[01])))?$')
+        && value.monthlyAmount is number && value.monthlyAmount >= 0 && value.monthlyAmount <= 1000000000000
+        && (!('costBasis' in value) || (value.costBasis is number && value.costBasis >= 0 && value.costBasis <= 1000000000000000))
         && (!('bucketId' in value) || isBoundedString(value.bucketId, 20));
     }
 
@@ -189,16 +188,14 @@ function validWatchdogRules(value) {
 
     function validPersistedData() {
       let data = request.resource.data.data;
-      return data is map
-        && data.keys().hasOnly([
+      return data.keys().hasOnly([
           'profile', 'sip', 'fd', 'epf', 'esop', 'bonds', 'otherHoldings', 'liabilities', 'demat',
           'nav', 'niftyHigh', 'niftyData', 'currencyRates', 'eurInr', 'eurInrData',
           'alphaTrackerData', 'goals', 'fundBuckets', 'watchdogRules', 'swpSchedule', 'taxCalendar',
           'expenses', 'transactionLedger', 'netWorthHistory', 'completedActions', 'achievedMilestones',
           'insurance', 'esopDetails', 'liquidationRules', 'assistant'
         ])
-        && data.size() <= 42
-        && (!('profile' in data) || data.profile is map)
+        && (!('profile' in data) || validProfile(data.profile))
         && (!('mf' in data) || isBoundedMap(data.mf, 200))
         && (!('currencyRates' in data) || isBoundedMap(data.currencyRates, 200))
         && (!('liabilities' in data) || isBoundedMap(data.liabilities, 50))
@@ -245,11 +242,8 @@ function validWatchdogRules(value) {
     function validFormat() {
       return !('format' in request.resource.data)
         || (request.resource.data.format is map
-          && request.resource.data.format.keys().hasOnly(['normalizedArrays', 'backupVersion'])
-          && request.resource.data.format.keys().hasAll(['normalizedArrays', 'backupVersion'])
-          && request.resource.data.format.size() <= 2
-          && request.resource.data.format.normalizedArrays is bool
-          && isBoundedString(request.resource.data.format.backupVersion, 50));
+          && request.resource.data.format.size() == 2
+          );
     }
 
     function validEnvelope() {
@@ -268,14 +262,12 @@ function validWatchdogRules(value) {
       && request.resource.data.schemaVersion is string
       && request.resource.data.schemaVersion in ['fireOS_v2', 'fireOS_v3', 'fireOS_v4', 'fireOS_v5']
       && isIso(request.resource.data.lastSavedAt)
-      && request.resource.data.data is map
       && validPersistedData()
       && validClient()
       && validSectionClocks()
       && validServerMetadata()
       && validEntryUpdatedAt()
-      && validMigration()
-      && validFormat();
+      && validMigration();
     }
 
     match /users/{uid}/portfolio/state {
