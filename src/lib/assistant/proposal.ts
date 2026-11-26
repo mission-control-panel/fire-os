@@ -12,6 +12,11 @@ import type { FireOSState } from '../../types/state';
 import { isPersistedPortfolioData, PERSISTED_STATE_KEYS } from '../../types/state';
 
 const FORBIDDEN_KEYS = new Set(['currentUser', '_lastSavedAt', '_syncMetadata']);
+const ASSISTANT_WRITABLE_KEYS = new Set([
+  'profile', 'mf', 'fd', 'epf', 'sip', 'esop', 'bonds', 'otherHoldings', 'liabilities', 'demat',
+  'goals', 'fundBuckets', 'watchdogRules', 'swpSchedule', 'taxCalendar', 'expenses',
+  'completedActions', 'achievedMilestones', 'insurance', 'esopDetails', 'liquidationRules',
+]);
 const HOLDING_KEYS = [
   'mf',
   'sip',
@@ -140,6 +145,7 @@ export function applyAssistantProposal(
     if (FORBIDDEN_KEYS.has(key) || key.startsWith('_')) {
       return { ok: false, reason: `Proposal may not modify runtime field "${key}".` };
     }
+    if (!ASSISTANT_WRITABLE_KEYS.has(key)) return { ok: false, reason: `Assistant may not modify field "${key}".` };
     if (!(PERSISTED_STATE_KEYS as readonly string[]).includes(key)) {
       return { ok: false, reason: `Proposal may not modify unknown field "${key}".` };
     }
@@ -187,16 +193,15 @@ export function classifyProposal(
     }
     if (isPlainObject(value)) {
       const currentSection = isPlainObject(currentRec[key]) ? currentRec[key] : {};
-      for (const [sub, afterVal] of Object.entries(value)) {
-        if (typeof afterVal === 'number') {
-          const beforeVal = currentSection[sub];
-          const delta =
-            typeof beforeVal === 'number' ? Math.abs(afterVal - beforeVal) : Math.abs(afterVal);
-          if (delta >= HIGH_VALUE_THRESHOLD) {
-            reasons.push(`Large value change at "${key}.${sub}" (Δ ₹${Math.round(delta).toLocaleString('en-IN')})`);
-          }
+      const visit = (path: string, before: unknown, after: unknown): void => {
+        if (typeof after === 'number') {
+          const delta = typeof before === 'number' ? Math.abs(after - before) : Math.abs(after);
+          if (delta >= HIGH_VALUE_THRESHOLD) reasons.push(`Large value change at "${path}" (Δ ₹${Math.round(delta).toLocaleString('en-IN')})`);
+          return;
         }
-      }
+        if (isPlainObject(after)) for (const [nested, nestedValue] of Object.entries(after)) visit(`${path}.${nested}`, isPlainObject(before) ? before[nested] : undefined, nestedValue);
+      };
+      visit(key, currentSection, value);
     } else if (Array.isArray(value) && Array.isArray(currentRec[key])) {
       const beforeArr = currentRec[key] as unknown[];
       if (value.length < beforeArr.length && beforeArr.length - value.length >= 10) {

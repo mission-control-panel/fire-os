@@ -16,7 +16,7 @@ export interface AssistantConversationMessage {
 
 /** Keep the longest valid suffix: user-starting, alternating, user-ending. */
 export function normalizeConversationMessages(messages: AssistantConversationMessage[]): AssistantConversationMessage[] {
-  const clean = messages.filter((message) => message.content.trim());
+  const clean = messages.map((message) => ({ ...message, content: message.content.trim() })).filter((message) => message.content);
   const end = clean.length - 1;
   if (end < 0 || clean[end].role !== 'user') return [];
   for (let start = Math.max(0, end - 11); start <= end; start += 1) {

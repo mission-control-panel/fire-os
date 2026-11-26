@@ -30,6 +30,11 @@ const latestMessageSchema = messageSchema.refine((message) => message.role === '
   message: 'last message must match question',
 });
 const proposalEnvelopeSchema = z.record(z.string(), z.unknown());
+const ASSISTANT_WRITABLE_KEYS = new Set([
+  'profile', 'mf', 'fd', 'epf', 'sip', 'esop', 'bonds', 'otherHoldings', 'liabilities', 'demat',
+  'goals', 'fundBuckets', 'watchdogRules', 'swpSchedule', 'taxCalendar', 'expenses',
+  'completedActions', 'achievedMilestones', 'insurance', 'esopDetails', 'liquidationRules',
+]);
 const sendExactSchema = z.boolean();
 const messageArrayShapeSchema = z.array(z.unknown()).min(1).max(12);
 
@@ -145,7 +150,7 @@ export function extractProposedChanges(reply) {
       if (
         key.startsWith('_') ||
         ['currentUser', '_lastSavedAt', '_syncMetadata'].includes(key) ||
-        !allowed.has(key)
+        !allowed.has(key) || !ASSISTANT_WRITABLE_KEYS.has(key)
       ) {
         continue;
       }

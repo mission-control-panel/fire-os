@@ -104,6 +104,20 @@ describe('classifyProposal', () => {
     expect(analysis.requiresReauth).toBe(false);
     expect(analysis.reasons).toEqual([]);
   });
+
+  it('requires re-authentication for nested high-value holding changes', () => {
+    const state = initializeState();
+    state.fd = { fd1: { amount: 100000, currency: 'INR' } };
+    const analysis = classifyProposal(state, { fd: { fd1: { amount: 1200000 } } });
+    expect(analysis.requiresReauth).toBe(true);
+    expect(analysis.reasons[0]).toContain('fd.fd1.amount');
+  });
+
+  it('rejects assistant proposals that mutate valuation caches or privacy controls', () => {
+    const state = initializeState();
+    expect(applyAssistantProposal(state, { nav: {} })).toMatchObject({ ok: false });
+    expect(applyAssistantProposal(state, { assistant: { sendExactFigures: true } })).toMatchObject({ ok: false });
+  });
 });
 
 describe('buildCandidate / computeDiff / applyValidatedProposal', () => {
