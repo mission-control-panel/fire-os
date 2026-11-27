@@ -2,6 +2,7 @@ import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, floatIndicator } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 import { planGoal } from './goal-planning';
+import { assessInsuranceNeeds } from '../insurance/insurance-planning';
 import { formatCurrency } from '../../lib/formatters';
 
 function escapeHtml(value: string): string {
@@ -77,12 +78,21 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
       description: 'Set up your insurance data in the Insurance tab to evaluate your protection.',
     });
   } else {
-    const requiredTerm = Math.max(annualIncome * 10, 10000000);
-    const requiredHealth = ins.health.familySize <= 2 ? 2000000 : 5000000;
+    const insuranceNeeds = assessInsuranceNeeds({
+      annualIncome,
+      dependents: Math.max(0, ins.health.familySize - 1),
+      outstandingDebt: 0,
+      futureGoalShortfall: 0,
+      accessibleAssets: 0,
+      familySize: ins.health.familySize,
+      currentTermCover: ins.termLife.currentCover,
+      currentHealthCover: ins.health.currentCover,
+      policies: ins.policies,
+    });
     
     let gaps = [];
-    if (ins.termLife.currentCover < requiredTerm) gaps.push(`term gap ₹${Math.round((requiredTerm - ins.termLife.currentCover) / 100000)}L`);
-    if (ins.health.currentCover < requiredHealth) gaps.push(`health gap ₹${Math.round((requiredHealth - ins.health.currentCover) / 100000)}L`);
+    if (insuranceNeeds.termGap > 0) gaps.push(`term gap ₹${Math.round(insuranceNeeds.termGap / 100000)}L`);
+    if (insuranceNeeds.healthGap > 0) gaps.push(`health gap ₹${Math.round(insuranceNeeds.healthGap / 100000)}L`);
     
     if (gaps.length > 0) {
       addAction({

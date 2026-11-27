@@ -4,6 +4,7 @@
  */
 import { formatCurrency } from '../../lib/formatters';
 import { createFeatureContext, type FeatureContext } from '../../core/feature-context';
+import { assessInsuranceNeeds, policyLifecycle } from './insurance-planning';
 import './styles.css';
 
 const DEBOUNCE_MS = 500;
@@ -33,6 +34,22 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
   const recommendedHealth = familySize <= 2 ? 2000000 : 5000000;
   const currentHealthCover = state.insurance.health.currentCover || 0;
   const healthAdequate = currentHealthCover >= recommendedHealth;
+  const needs = assessInsuranceNeeds({
+    annualIncome,
+    dependents: Math.max(0, familySize - 1),
+    outstandingDebt: 0,
+    futureGoalShortfall: 0,
+    accessibleAssets: 0,
+    familySize,
+    currentTermCover,
+    currentHealthCover,
+    policies: state.insurance.policies,
+  });
+  const policyRows = (state.insurance.policies ?? []).map((policy) => {
+    const lifecycle = policyLifecycle(policy);
+    const label = lifecycle.status === 'expiring-soon' ? `Renew within ${lifecycle.daysRemaining} days` : lifecycle.status.replace('-', ' ');
+    return `<li><strong>${escapeHtml(policy.kind)}</strong> · ${escapeHtml(policy.provider || 'Provider not recorded')} · ${escapeHtml(label)}</li>`;
+  }).join('');
 
   const successIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;color:#2e7d32;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
   const warningIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;color:#d32f2f;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
@@ -49,7 +66,7 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
             <span class="status-icon">${termAdequate ? successIcon : warningIcon}</span>
             <div class="status-text">
               <strong>${termAdequate ? 'Adequate Cover' : 'Underinsured'}</strong>
-              <span>Recommended: ${formatCurrency(recommendedTerm)}</span>
+            <span>Planning need: ${formatCurrency(needs.requiredTermCover)} · Gap: ${formatCurrency(needs.termGap)}</span>
             </div>
           </div>
           
@@ -62,6 +79,14 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
               <label for="term-premium">Annual Premium (₹)</label>
               <input type="number" id="term-premium" value="${state.insurance.termLife.annualPremium || ''}" placeholder="e.g. 15000">
             </div>
+            <div class="form-group">
+              <label for="term-expiry">Expiry date</label>
+              <input type="date" id="term-expiry" value="${escapeHtml(state.insurance.termLife.expiryDate)}">
+            </div>
+            <div class="form-group">
+              <label for="term-provider">Provider</label>
+              <input type="text" id="term-provider" value="${escapeHtml(state.insurance.termLife.provider)}" placeholder="Optional">
+            </div>
           </form>
         </div>
 
@@ -72,7 +97,7 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
             <span class="status-icon">${healthAdequate ? successIcon : warningIcon}</span>
             <div class="status-text">
               <strong>${healthAdequate ? 'Adequate Cover' : 'Underinsured'}</strong>
-              <span>Recommended: ${formatCurrency(recommendedHealth)}</span>
+            <span>Planning need: ${formatCurrency(needs.requiredHealthCover)} · Gap: ${formatCurrency(needs.healthGap)}</span>
             </div>
           </div>
           
@@ -89,9 +114,22 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
               <label for="health-family">Family Size (Number of people)</label>
               <input type="number" id="health-family" value="${state.insurance.health.familySize || ''}" placeholder="e.g. 4">
             </div>
+            <div class="form-group">
+              <label for="health-expiry">Expiry date</label>
+              <input type="date" id="health-expiry" value="${escapeHtml(state.insurance.health.expiryDate ?? '')}">
+            </div>
+            <div class="form-group">
+              <label for="health-provider">Provider</label>
+              <input type="text" id="health-provider" value="${escapeHtml(state.insurance.health.provider)}" placeholder="Optional">
+            </div>
           </form>
         </div>
       </div>
+      <section class="insurance-policy-lifecycle" aria-labelledby="insurance-policy-heading">
+        <h3 id="insurance-policy-heading">Policy lifecycle</h3>
+        ${policyRows ? `<ul>${policyRows}</ul>` : '<p>No separate policy records yet. The summary fields above remain compatible with existing data.</p>'}
+        <p class="insurance-assumptions">Planning guidance uses configurable household assumptions; it is not a universal coverage recommendation.</p>
+      </section>
     </div>
   `;
 
@@ -120,13 +158,25 @@ function saveInsurance(context: FeatureContext) {
   const healthCover = document.getElementById('health-cover') as HTMLInputElement;
   const healthPremium = document.getElementById('health-premium') as HTMLInputElement;
   const healthFamily = document.getElementById('health-family') as HTMLInputElement;
+  const termExpiry = document.getElementById('term-expiry') as HTMLInputElement;
+  const termProvider = document.getElementById('term-provider') as HTMLInputElement;
+  const healthExpiry = document.getElementById('health-expiry') as HTMLInputElement;
+  const healthProvider = document.getElementById('health-provider') as HTMLInputElement;
 
   state.insurance.termLife.currentCover = parseFloat(termCover.value) || 0;
   state.insurance.termLife.annualPremium = parseFloat(termPremium.value) || 0;
+  state.insurance.termLife.expiryDate = termExpiry.value;
+  state.insurance.termLife.provider = termProvider.value.trim();
   
   state.insurance.health.currentCover = parseFloat(healthCover.value) || 0;
   state.insurance.health.annualPremium = parseFloat(healthPremium.value) || 0;
   state.insurance.health.familySize = parseInt(healthFamily.value) || 1;
+  state.insurance.health.expiryDate = healthExpiry.value;
+  state.insurance.health.provider = healthProvider.value.trim();
 
   context.portfolio.save(state);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
 }

@@ -1,6 +1,7 @@
 import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, fiProgress } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
+import { assessInsuranceNeeds } from '../insurance/insurance-planning';
 
 export interface HealthAssessment {
   status: 'green' | 'yellow' | 'red';
@@ -39,15 +40,24 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   let protectionStatus: 'green' | 'yellow' | 'red' = 'green';
   let protectionDetail = 'Insurance coverage adequate.';
   const ins = state.insurance;
-  if (!ins || (ins.termLife.currentCover === 0 && ins.health.currentCover === 0)) {
+  const insuranceNeeds = ins ? assessInsuranceNeeds({
+    annualIncome,
+    dependents: Math.max(0, ins.health.familySize - 1),
+    outstandingDebt: 0,
+    futureGoalShortfall: 0,
+    accessibleAssets: 0,
+    familySize: ins.health.familySize,
+    currentTermCover: ins.termLife.currentCover,
+    currentHealthCover: ins.health.currentCover,
+    policies: ins.policies,
+  }) : null;
+  if (!ins || (insuranceNeeds?.currentTermCover === 0 && insuranceNeeds.currentHealthCover === 0)) {
     protectionStatus = 'red';
     protectionDetail = 'No insurance data configured.';
-  } else {
-    const requiredTerm = Math.max(annualIncome * 10, 10000000);
-    const requiredHealth = ins.health.familySize <= 2 ? 2000000 : 5000000;
-    if (ins.termLife.currentCover < requiredTerm || ins.health.currentCover < requiredHealth) {
+  } else if (insuranceNeeds) {
+    if (insuranceNeeds.termGap > 0 || insuranceNeeds.healthGap > 0) {
       protectionStatus = 'yellow';
-      protectionDetail = `Insurance gap detected. Need term cover of ₹${Math.round(requiredTerm / 100000)}L and health cover of ₹${Math.round(requiredHealth / 100000)}L.`;
+      protectionDetail = `Insurance gap detected. Need term cover of ₹${Math.round(insuranceNeeds.requiredTermCover / 100000)}L and health cover of ₹${Math.round(insuranceNeeds.requiredHealthCover / 100000)}L.`;
     }
   }
 

@@ -291,9 +291,11 @@ with a default of 0 when not set. Read [UI](ui.md) for tab-level logic and addit
 - **Planning Tools** (`src/modules/calculators/`): crash protocol, emergency
   runway, SIP pause, LTCG tax planner, SWP scheduler, allocation rebalancing and
   side-by-side scenario comparison.
-- **Insurance** (`src/modules/insurance/`): term and health cover data. Term
-  expiry/provider, health provider and vehicle cover exist in state only and have
-  no UI input.
+- **Insurance** (`src/modules/insurance/`): term and health cover data plus
+  provider/expiry metadata and optional employer/personal policy records.
+  Active-policy aggregation, renewal/expiry states and assumption-based gaps
+  preserve legacy summary fields; no quote API or universal recommendation is
+  provided.
 - **Plan** (`src/modules/plan/`): health score, action list, milestones,
   cashflow and history-oriented planning.
 - **ESOP Tools** (`src/modules/esop/`): vesting, liquidation rules and quoted valuation.

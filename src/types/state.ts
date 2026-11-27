@@ -51,6 +51,25 @@ export type GoalInflation = 'cpi' | 'education' | 'medical' | number;
 
 export type GoalRiskBucket = 'low' | 'medium' | 'high';
 
+export type InsurancePolicyKind = 'term' | 'health' | 'vehicle';
+export type InsuranceOwnerType = 'employer' | 'personal';
+
+/** User-entered policy metadata; legacy summary fields remain supported. */
+export interface InsurancePolicy {
+  id: string;
+  kind: InsurancePolicyKind;
+  ownerType: InsuranceOwnerType;
+  provider: string;
+  coverAmount: number;
+  annualPremium: number;
+  expiryDate: string;
+  deductible: number;
+  topUpCover: number;
+  dependents: number;
+  waitingPeriodMonths: number;
+  exclusions: string;
+}
+
 /** A user-defined planning goal (target, funding progress, and assumptions). */
 export interface Goal {
   id: string;
@@ -206,8 +225,9 @@ export interface FireOSState {
   // Insurance Coverage (v3.1)
   insurance: {
     termLife: { currentCover: number; annualPremium: number; expiryDate: string; provider: string };
-    health: { currentCover: number; annualPremium: number; familySize: number; provider: string };
+    health: { currentCover: number; annualPremium: number; familySize: number; provider: string; expiryDate?: string };
     vehicle: { covered: boolean; annualPremium: number };
+    policies?: InsurancePolicy[];
   };
 
   // Sync metadata (internal use)
@@ -415,8 +435,14 @@ const persistedPortfolioShape = {
   achievedMilestones: exactOptional(z.array(z.string())),
   insurance: exactOptional(z.strictObject({
     termLife: z.strictObject({ currentCover: finiteNumberSchema, annualPremium: finiteNumberSchema, expiryDate: z.string(), provider: z.string() }),
-    health: z.strictObject({ currentCover: finiteNumberSchema, annualPremium: finiteNumberSchema, familySize: finiteNumberSchema, provider: z.string() }),
+    health: z.strictObject({ currentCover: finiteNumberSchema, annualPremium: finiteNumberSchema, familySize: finiteNumberSchema, provider: z.string(), expiryDate: z.string().optional() }),
     vehicle: z.strictObject({ covered: z.boolean(), annualPremium: finiteNumberSchema }),
+    policies: z.array(z.strictObject({
+      id: z.string().max(150), kind: z.enum(['term', 'health', 'vehicle']), ownerType: z.enum(['employer', 'personal']),
+      provider: z.string().max(200), coverAmount: finiteNumberSchema.nonnegative(), annualPremium: finiteNumberSchema.nonnegative(),
+      expiryDate: z.string(), deductible: finiteNumberSchema.nonnegative(), topUpCover: finiteNumberSchema.nonnegative(),
+      dependents: finiteNumberSchema.nonnegative(), waitingPeriodMonths: finiteNumberSchema.nonnegative(), exclusions: z.string().max(2000),
+    })).max(50).optional(),
   })),
   esopDetails: exactOptional(z.strictObject({
     shares: finiteNumberSchema,
@@ -572,8 +598,9 @@ export function initializeState(): FireOSState {
     // Insurance Coverage (v3.1)
     insurance: {
       termLife: { currentCover: 0, annualPremium: 0, expiryDate: '', provider: '' },
-      health: { currentCover: 0, annualPremium: 0, familySize: 1, provider: '' },
+      health: { currentCover: 0, annualPremium: 0, familySize: 1, provider: '', expiryDate: '' },
       vehicle: { covered: false, annualPremium: 0 },
+      policies: [],
     },
 
     // Sync metadata
@@ -627,6 +654,7 @@ export function normalizePersistedState(value: unknown): FireOSState | null {
       termLife: { ...defaults.insurance.termLife, ...data.insurance?.termLife },
       health: { ...defaults.insurance.health, ...data.insurance?.health },
       vehicle: { ...defaults.insurance.vehicle, ...data.insurance?.vehicle },
+      policies: data.insurance?.policies ?? defaults.insurance.policies,
     },
     esopDetails: {
       ...defaults.esopDetails,
@@ -733,6 +761,7 @@ export function mergeState(existing: FireOSState, incoming: Partial<FireOSState>
         ...existing.insurance?.vehicle,
         ...incoming.insurance?.vehicle,
       },
+      policies: incoming.insurance?.policies ?? existing.insurance?.policies ?? initializeState().insurance.policies,
     },
     // ESOP Details
     esopDetails: {
