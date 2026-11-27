@@ -21,6 +21,7 @@ import {
 } from '../ui';
 import { GoalForm } from './goal-form';
 import type { Goal, GoalKind } from '../../types/state';
+import { planGoal } from '../../modules/plan/goal-planning';
 
 const KIND_LABELS: Record<GoalKind, string> = {
   fi: 'Financial Independence',
@@ -124,9 +125,11 @@ export function GoalsRoute() {
             </TableHead>
             <TableBody>
               {goals.map((goal) => {
-                const progress = progressOf(goal);
-                const shortfall = Math.max(0, goal.targetToday - goal.currentAmount);
-                const months = monthsRemaining(goal.targetDate);
+                const plan = planGoal(goal);
+                const displayedTarget = plan.targetAtDate || goal.targetToday;
+                const progress = displayedTarget > 0 ? Math.max(0, Math.min(100, (goal.currentAmount / displayedTarget) * 100)) : progressOf(goal);
+                const shortfall = plan.status === 'missing-data' ? Math.max(0, goal.targetToday - goal.currentAmount) : plan.shortfallAtDate;
+                const months = plan.status === 'missing-data' ? monthsRemaining(goal.targetDate) : plan.monthsRemaining;
                 const reached = progress >= 100;
 
                 return (
@@ -135,6 +138,13 @@ export function GoalsRoute() {
                       <span className="font-medium">{goal.name}</span>
                       <span className="block text-xs text-(--color-muted-foreground)">
                         {KIND_LABELS[goal.kind]} · Priority {goal.priority} · {goal.riskBucket} risk
+                      </span>
+                      <span className="block text-xs text-(--color-muted-foreground)">
+                        {plan.status === 'missing-data'
+                          ? 'Missing planning inputs'
+                          : plan.status === 'reached'
+                            ? 'Target covered'
+                            : `${plan.status === 'underfunded' ? 'Needs' : 'Planned'} ${formatCurrency(plan.requiredMonthlyContribution ?? 0, 0)}/mo`}
                       </span>
                     </TableCell>
 
@@ -159,7 +169,10 @@ export function GoalsRoute() {
                       </div>
                     </TableCell>
 
-                    <TableNumericCell>{formatCurrency(goal.targetToday)}</TableNumericCell>
+                    <TableNumericCell>
+                      <span>{formatCurrency(goal.targetToday)}</span>
+                      {displayedTarget !== goal.targetToday ? <span aria-hidden="true" className="block text-xs text-(--color-muted-foreground)">~{formatCurrency(displayedTarget)} at target</span> : null}
+                    </TableNumericCell>
                     <TableNumericCell>{formatCurrency(goal.currentAmount)}</TableNumericCell>
                     <TableNumericCell>
                       {reached ? (

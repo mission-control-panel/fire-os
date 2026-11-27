@@ -210,7 +210,10 @@ Goals is a migrated React route. The form requires a named goal, a target
 strictly above ₹10, a `YYYY-MM` target month, and a priority of at least 1;
 validation is rendered inline rather than through browser-native bubbles.
 Submitted goals preserve the optional monthly contribution and render as a
-table row with Indian currency formatting, funding progress and shortfall.
+table row with Indian currency formatting, funding progress and shortfall. The
+row also shows the inflation-adjusted target at the target month and the
+monthly contribution required under the planner's explicit 10% annual-return
+assumption; overdue and missing-input states remain visible.
 
 ### Planning Tools — `src/modules/calculators/`
 
@@ -264,10 +267,12 @@ thresholds are described under Plan below.
 
 ### Plan — `src/modules/plan/`
 
-The health assessment combines four dimensions: FI progress (yellow if target
+The health assessment combines five dimensions: FI progress (yellow if target
 missing; low progress <10% is yellow), protection (red if no cover data;
 otherwise yellow when below target), savings rate (red <15%, yellow <30%,
-green otherwise; missing income is red), and portfolio watchdog. Watchdog
+green otherwise; missing income is red), accessible liquidity/runway (red below
+6 months, yellow when missing or between 6 and 12 months, green at 12+ months),
+and portfolio watchdog. Watchdog
 critical/high => red, other alert => yellow; overall is worst dimension. Term
 cover target is max(10×annual income, ₹1Cr); health cover target is ₹20L for
 family of two or less, otherwise ₹50L.

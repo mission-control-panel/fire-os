@@ -1,6 +1,8 @@
 import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, floatIndicator } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
+import { planGoal } from './goal-planning';
+import { formatCurrency } from '../../lib/formatters';
 
 export interface ActionItem {
   id: string;              // Unique key for checkbox persistence
@@ -158,17 +160,31 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
 
   // 9. Goal SIP start approaching (< 6 months) (upcoming)
   for (const goal of state.goals ?? []) {
-    if (!goal.targetDate || !goal.monthlyContribution) continue;
-    const [gYear, gMonth] = goal.targetDate.split('-').map(Number);
-    const goalStart = new Date(gYear, gMonth - 1, 1);
-    const monthsToStart = (goalStart.getTime() - now.getTime()) / (1000 * 3600 * 24 * 30);
-    if (monthsToStart > 0 && monthsToStart < 6) {
+    const plan = planGoal(goal, { today: now });
+    if (plan.status === 'overdue') {
+      addAction({
+        id: `goal-overdue-${goal.id}`,
+        priority: 'urgent',
+        category: 'review',
+        title: `Replan ${goal.name}`,
+        description: `This goal is overdue by ${Math.abs(plan.monthsRemaining)} month${Math.abs(plan.monthsRemaining) === 1 ? '' : 's'}. Update the target date or funding assumptions.`,
+      });
+    } else if (plan.status === 'underfunded' && plan.requiredMonthlyContribution !== null) {
+      addAction({
+        id: `goal-funding-gap-${goal.id}`,
+        priority: 'this-month',
+        category: 'invest',
+        title: `Close ${goal.name} funding gap`,
+        description: `Plan ${formatCurrency(plan.requiredMonthlyContribution, 0)}/mo; current contribution leaves a ${formatCurrency(plan.contributionGap ?? 0, 0)}/mo gap after inflation.`,
+      });
+    }
+    if (plan.monthsRemaining > 0 && plan.monthsRemaining < 6 && goal.monthlyContribution) {
       addAction({
         id: `goal-sip-approaching-${goal.id}`,
         priority: 'upcoming',
         category: 'invest',
         title: `Prepare for ${goal.name} SIP`,
-        description: `${goal.name} SIP (₹${goal.monthlyContribution}/mo) starts in ${Math.ceil(monthsToStart)} months (${goal.targetDate}). Ensure cashflow.`,
+        description: `${goal.name} SIP (₹${goal.monthlyContribution}/mo) starts in ${Math.ceil(plan.monthsRemaining)} months (${goal.targetDate}). Ensure cashflow.`,
       });
     }
   }

@@ -1,0 +1,33 @@
+import { describe, expect, it } from 'vitest';
+import { allocateGoalAssets, planGoal } from './goal-planning';
+import type { Goal } from '../../types/state';
+
+const goal = (overrides: Partial<Goal> = {}): Goal => ({
+  id: 'home', name: 'Home', kind: 'home', targetToday: 1_000_000, targetDate: '2030-01', inflation: 'cpi',
+  linkedAssetIds: [], currentAmount: 100_000, monthlyContribution: 10_000, priority: 1, riskBucket: 'medium', ...overrides,
+});
+
+describe('goal planning', () => {
+  it('inflates a target and calculates a transparent monthly shortfall', () => {
+    const plan = planGoal(goal(), { today: new Date('2026-01-01T00:00:00Z'), annualReturnRate: 0 });
+    expect(plan.targetAtDate).toBeCloseTo(1_000_000 * 1.06 ** 4);
+    expect(plan.monthsRemaining).toBe(48);
+    expect(plan.requiredMonthlyContribution).toBeCloseTo((plan.targetAtDate - 100_000) / 48);
+    expect(plan.status).toBe('underfunded');
+  });
+
+  it('makes overdue and missing inputs explicit', () => {
+    expect(planGoal(goal({ targetDate: '2025-01' }), { today: new Date('2026-01-01T00:00:00Z') }).status).toBe('overdue');
+    expect(planGoal(goal({ targetDate: '2030-13' }), { today: new Date('2026-01-01T00:00:00Z') }).status).toBe('missing-data');
+  });
+
+  it('prevents double allocation by priority and reports overlap', () => {
+    const result = allocateGoalAssets([
+      goal({ id: 'low', priority: 2, linkedAssetIds: ['fund', 'cash'] }),
+      goal({ id: 'high', priority: 1, linkedAssetIds: ['fund'] }),
+    ], { fund: 500_000, cash: 100_000, bank: 50_000 });
+    expect(result.allocatedByGoal).toEqual({ low: 100_000, high: 500_000 });
+    expect(result.duplicateAssetIds).toEqual(['fund']);
+    expect(result.unallocatedAssets).toEqual(['bank']);
+  });
+});

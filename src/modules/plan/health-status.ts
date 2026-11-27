@@ -1,5 +1,6 @@
 import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, fiProgress } from '../../core/feature-ports';
+import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 
 export interface HealthAssessment {
   status: 'green' | 'yellow' | 'red';
@@ -8,6 +9,7 @@ export interface HealthAssessment {
   dimensions: {
     fiProgress: 'green' | 'yellow' | 'red';
     protection: 'green' | 'yellow' | 'red';
+    liquidity: 'green' | 'yellow' | 'red';
     savingsRate: 'green' | 'yellow' | 'red';
     portfolioHealth: 'green' | 'yellow' | 'red';
   };
@@ -65,6 +67,19 @@ export function assessHealth(state: FireOSState): HealthAssessment {
     savingsDetail = 'No income data configured.';
   }
 
+  const liquidity = portfolioSafetyReport(state).liquidity;
+  let liquidityStatus: 'green' | 'yellow' | 'red' = 'yellow';
+  let liquidityDetail = 'Liquidity is not fully assessable yet.';
+  if (liquidity.status === 'available' && liquidity.runwayMonths !== null) {
+    if (liquidity.runwayMonths < 6) liquidityStatus = 'red';
+    else if (liquidity.runwayMonths >= 12) liquidityStatus = 'green';
+    liquidityDetail = `${liquidity.runwayMonths.toFixed(1)} months of essential-expense runway from accessible assets.`;
+  } else if (liquidity.reason === 'expenses-missing') {
+    liquidityDetail = 'Add essential monthly expenses to calculate emergency runway.';
+  } else if (liquidity.reason === 'valuation-missing') {
+    liquidityDetail = 'Refresh or manually value assets before relying on runway.';
+  }
+
   let portfolioStatus: 'green' | 'yellow' | 'red' = 'green';
   let portfolioDetail = 'No active watchdog alerts.';
   const alerts = checkWatchdogRules(state.watchdogRules ?? []);
@@ -82,7 +97,7 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   }
 
   // Aggregate Status
-  const statuses = [fiStatus, protectionStatus, savingsStatus, portfolioStatus];
+  const statuses = [fiStatus, protectionStatus, liquidityStatus, savingsStatus, portfolioStatus];
   let overall: 'green' | 'yellow' | 'red' = 'green';
   if (statuses.includes('red')) overall = 'red';
   else if (statuses.includes('yellow')) overall = 'yellow';
@@ -94,10 +109,11 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   return {
     status: overall,
     headline,
-    details: [fiDetail, protectionDetail, savingsDetail, portfolioDetail],
+    details: [fiDetail, protectionDetail, liquidityDetail, savingsDetail, portfolioDetail],
     dimensions: {
       fiProgress: fiStatus,
       protection: protectionStatus,
+      liquidity: liquidityStatus,
       savingsRate: savingsStatus,
       portfolioHealth: portfolioStatus,
     }
@@ -117,6 +133,7 @@ export function renderHealthStatusBanner(state: FireOSState): string {
   const dimLabels = {
     fiProgress: 'FI Progress',
     protection: 'Protection',
+    liquidity: 'Liquidity',
     savingsRate: 'Savings Rate',
     portfolioHealth: 'Portfolio Health'
   };

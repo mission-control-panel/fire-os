@@ -145,6 +145,15 @@ deduplication and explicit merge/replace application; each application returns
 a rollback snapshot. Current SWP/expense records remain a separate legacy
 user-facing section until a deliberate migration maps them to ledger events.
 
+Goal planning is read-only and explicit about assumptions. `src/modules/plan/goal-planning.ts`
+inflates today's-rupees targets to the target month, calculates required monthly
+contribution and gap using a supplied return assumption, reports overdue or
+missing-input states, and assigns linked assets to the highest-priority goal
+only once so competing goals cannot double-count the same asset. The Goals route
+shows the inflation-adjusted target and planned monthly amount. The Plan health
+assessment also reports accessible emergency-runway status; missing expenses or
+stale valuations remain actionable unknowns rather than zero values.
+
 Storage keys are `fireOS_v2:anonymous` and `fireOS_v2:user:{uid}`; legacy
 `fireOS_v2` is copied to the anonymous scope on first read. `saveData()` refuses
 to write outside the selected identity scope, strips runtime fields and invalid
