@@ -87,6 +87,8 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
       familySize: ins.health.familySize,
       currentTermCover: ins.termLife.currentCover,
       currentHealthCover: ins.health.currentCover,
+      legacyTermExpiryDate: ins.termLife.expiryDate,
+      legacyHealthExpiryDate: ins.health.expiryDate,
       policies: ins.policies,
     });
     

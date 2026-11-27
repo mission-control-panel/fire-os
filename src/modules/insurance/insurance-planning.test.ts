@@ -14,6 +14,7 @@ describe('insurance planning', () => {
     expect(policyLifecycle(policy(), { today, renewalWindowDays: 60 }).status).toBe('active');
     expect(policyLifecycle(policy({ expiryDate: '2026-02-15' }), { today, renewalWindowDays: 60 }).status).toBe('expiring-soon');
     expect(policyLifecycle(policy({ expiryDate: '2025-12-31' }), { today }).status).toBe('expired');
+    expect(policyLifecycle(policy({ expiryDate: 'not-a-date' }), { today }).status).toBe('unknown');
   });
 
   it('aggregates multiple active policies and health top-up without expired cover', () => {
@@ -23,6 +24,27 @@ describe('insurance planning', () => {
       policy({ id: 'expired', coverAmount: 10_000_000, expiryDate: '2025-01-01' }),
     ], { today: new Date('2026-01-01T00:00:00Z') });
     expect(coverage.health).toBe(6_000_000);
+  });
+
+  it('uses detailed policies as canonical and excludes deductible top-ups', () => {
+    const result = assessInsuranceNeeds({
+      annualIncome: 1_000_000, dependents: 0, outstandingDebt: 0, futureGoalShortfall: 0, accessibleAssets: 0,
+      familySize: 1, currentTermCover: 10_000_000, currentHealthCover: 5_000_000,
+      policies: [policy({ kind: 'term', coverAmount: 2_000_000 }), policy({ topUpCover: 10_000_000, deductible: 500_000 })],
+    });
+    expect(result.currentTermCover).toBe(2_000_000);
+    expect(result.currentHealthCover).toBe(2_000_000);
+    expect(result.assumptions.some((assumption) => assumption.includes('deductible'))).toBe(true);
+  });
+
+  it('excludes expired and malformed legacy summary cover', () => {
+    const result = assessInsuranceNeeds({
+      annualIncome: 1_000_000, dependents: 0, outstandingDebt: 0, futureGoalShortfall: 0, accessibleAssets: 0,
+      familySize: 1, currentTermCover: 10_000_000, currentHealthCover: 2_000_000,
+      legacyTermExpiryDate: '2025-01-01', legacyHealthExpiryDate: 'invalid',
+    });
+    expect(result.currentTermCover).toBe(0);
+    expect(result.currentHealthCover).toBe(0);
   });
 
   it('calculates term needs from dependents, debt, goals and accessible assets', () => {

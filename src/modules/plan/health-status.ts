@@ -49,6 +49,8 @@ export function assessHealth(state: FireOSState): HealthAssessment {
     familySize: ins.health.familySize,
     currentTermCover: ins.termLife.currentCover,
     currentHealthCover: ins.health.currentCover,
+    legacyTermExpiryDate: ins.termLife.expiryDate,
+    legacyHealthExpiryDate: ins.health.expiryDate,
     policies: ins.policies,
   }) : null;
   if (!ins || (insuranceNeeds?.currentTermCover === 0 && insuranceNeeds.currentHealthCover === 0)) {
