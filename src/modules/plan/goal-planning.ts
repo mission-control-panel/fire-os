@@ -13,6 +13,7 @@ export interface GoalAllocation {
   allocatedByGoal: Record<string, number>;
   unallocatedAssets: string[];
   duplicateAssetIds: string[];
+  invalidAssetIds: string[];
 }
 
 const INFLATION_RATES: Record<Exclude<GoalInflation, number>, number> = {
@@ -21,6 +22,7 @@ const INFLATION_RATES: Record<Exclude<GoalInflation, number>, number> = {
   medical: 0.08,
 };
 const MAX_PLANNING_AMOUNT = Number.MAX_SAFE_INTEGER;
+const ASSET_KINDS = new Set(['sip', 'mf', 'fd', 'epf', 'esop', 'bonds', 'demat', 'other']);
 
 function missingPlan(): GoalPlan {
   return { targetAtDate: 0, monthsRemaining: 0, shortfallAtDate: 0, requiredMonthlyContribution: null, contributionGap: null, status: 'missing-data' };
@@ -83,9 +85,11 @@ export function allocateGoalAssets(goals: readonly Goal[], assetValues: Record<s
   const allocatedByGoal: Record<string, number> = Object.fromEntries(goals.map((goal) => [goal.id, 0]));
   const owners = new Map<string, Goal>();
   const duplicateAssetIds = new Set<string>();
+  const invalidAssetIds = new Set<string>();
   const assetIds = Object.keys(assetValues);
   const canonicalAssetId = (assetId: string): string => {
-    if (assetValues[assetId] !== undefined && assetId.includes(':')) return assetId;
+    const prefix = assetId.split(':', 1)[0];
+    if (assetValues[assetId] !== undefined && ASSET_KINDS.has(prefix)) return assetId;
     const matches = assetIds.filter((candidate) => candidate.endsWith(`:${assetId}`));
     return matches.length === 1 ? matches[0] : assetId;
   };
@@ -100,12 +104,21 @@ export function allocateGoalAssets(goals: readonly Goal[], assetValues: Record<s
       }
       owners.set(assetId, goal);
       const value = assetValues[assetId];
-      if (Number.isFinite(value) && value > 0) allocatedByGoal[goal.id] += value;
+      if (Number.isFinite(value) && value > 0) {
+        const nextTotal = allocatedByGoal[goal.id] + value;
+        if (!Number.isFinite(nextTotal) || nextTotal > MAX_PLANNING_AMOUNT) {
+          allocatedByGoal[goal.id] = 0;
+          invalidAssetIds.add(rawAssetId);
+        } else {
+          allocatedByGoal[goal.id] = nextTotal;
+        }
+      }
     }
   }
   return {
     allocatedByGoal,
     unallocatedAssets: assetIds.filter((assetId) => canonicalAssetId(assetId) === assetId && !owners.has(assetId)),
     duplicateAssetIds: [...duplicateAssetIds].sort(),
+    invalidAssetIds: [...invalidAssetIds].sort(),
   };
 }

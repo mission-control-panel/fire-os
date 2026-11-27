@@ -143,6 +143,11 @@ export function GoalsRoute() {
               {allocation.duplicateAssetIds.length} linked asset{allocation.duplicateAssetIds.length === 1 ? '' : 's'} overlap between goals; priority order assigns each asset once.
             </p>
           ) : null}
+          {allocation.invalidAssetIds.length > 0 ? (
+            <p role="status" className="rounded-md border border-(--color-border) bg-(--color-muted) p-3 text-sm text-(--color-foreground)">
+              Some linked assets exceed the safe planning range and were excluded until their values are reviewed.
+            </p>
+          ) : null}
           <Card className="p-0">
           {/* Table already scrolls horizontally; the min-width stops the name
               column being crushed to two words before the scroll kicks in. */}

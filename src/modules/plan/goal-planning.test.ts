@@ -42,6 +42,7 @@ describe('goal planning', () => {
     expect(result.allocatedByGoal).toEqual({ low: 100_000, high: 500_000 });
     expect(result.duplicateAssetIds).toEqual(['fund']);
     expect(result.unallocatedAssets).toEqual(['bank']);
+    expect(result.invalidAssetIds).toEqual([]);
   });
 
   it('canonicalizes legacy bare asset IDs against unique namespaced holdings', () => {
@@ -52,5 +53,22 @@ describe('goal planning', () => {
     expect(result.allocatedByGoal).toEqual({ high: 500_000, low: 0 });
     expect(result.duplicateAssetIds).toEqual(['fund']);
     expect(result.unallocatedAssets).toEqual(['cash']);
+    expect(result.invalidAssetIds).toEqual([]);
+  });
+
+  it('canonicalizes legacy IDs that contain colons and rejects allocation overflow', () => {
+    const result = allocateGoalAssets([
+      goal({ id: 'high', priority: 1, linkedAssetIds: ['sip:fund:2024', 'fund:2024'] }),
+      goal({ id: 'low', priority: 2, linkedAssetIds: ['fund:2024'] }),
+    ], { 'sip:fund:2024': 500_000, 'fund:2024': 500_000, cash: Number.MAX_SAFE_INTEGER });
+    expect(result.allocatedByGoal).toEqual({ high: 500_000, low: 0 });
+    expect(result.duplicateAssetIds).toEqual(['fund:2024']);
+    expect(result.invalidAssetIds).toEqual([]);
+
+    const overflow = allocateGoalAssets([
+      goal({ id: 'overflow', linkedAssetIds: ['a', 'b'] }),
+    ], { a: Number.MAX_SAFE_INTEGER, b: 1 });
+    expect(overflow.allocatedByGoal.overflow).toBe(0);
+    expect(overflow.invalidAssetIds).toEqual(['b']);
   });
 });
