@@ -165,7 +165,9 @@ function isActiveExpiry(expiryDate: string, today = new Date()): boolean {
 function parseExpiry(expiryDate: string): number {
   if (/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) {
     const [year, month, day] = expiryDate.split('-').map(Number);
-    return new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
+    const localDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+    if (localDate.getFullYear() !== year || localDate.getMonth() !== month - 1 || localDate.getDate() !== day) return NaN;
+    return localDate.getTime();
   }
   return Date.parse(expiryDate);
 }
