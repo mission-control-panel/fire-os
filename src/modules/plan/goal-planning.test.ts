@@ -29,6 +29,10 @@ describe('goal planning', () => {
     expect(planGoal(goal({ targetDate: '2030-13' }), { today: new Date('2026-01-01T00:00:00Z') }).status).toBe('missing-data');
   });
 
+  it('rejects numeric overflow instead of displaying a fabricated zero plan', () => {
+    expect(planGoal(goal({ targetToday: Number.MAX_VALUE }), { today: new Date('2026-01-01T00:00:00Z') }).status).toBe('missing-data');
+  });
+
   it('prevents double allocation by priority and reports overlap', () => {
     const result = allocateGoalAssets([
       goal({ id: 'low', priority: 2, linkedAssetIds: ['fund', 'cash'] }),

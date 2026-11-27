@@ -20,6 +20,11 @@ const INFLATION_RATES: Record<Exclude<GoalInflation, number>, number> = {
   education: 0.08,
   medical: 0.08,
 };
+const MAX_PLANNING_AMOUNT = Number.MAX_SAFE_INTEGER;
+
+function missingPlan(): GoalPlan {
+  return { targetAtDate: 0, monthsRemaining: 0, shortfallAtDate: 0, requiredMonthlyContribution: null, contributionGap: null, status: 'missing-data' };
+}
 
 function validMonth(value: string): boolean {
   const match = /^(\d{4})-(\d{2})$/.exec(value);
@@ -44,16 +49,15 @@ export function planGoal(
   const today = options.today ?? new Date();
   const annualReturnRate = options.annualReturnRate ?? 0.10;
   const inflationRate = annualInflationRate(goal.inflation);
-  if (!Number.isFinite(goal.targetToday) || goal.targetToday <= 0 || !validMonth(goal.targetDate)
-    || !Number.isFinite(goal.currentAmount) || goal.currentAmount < 0 || !Number.isFinite(inflationRate)
-    || !Number.isFinite(annualReturnRate) || annualReturnRate < 0) {
-    return { targetAtDate: 0, monthsRemaining: 0, shortfallAtDate: 0, requiredMonthlyContribution: null, contributionGap: null, status: 'missing-data' };
-  }
+  if (!Number.isFinite(goal.targetToday) || goal.targetToday <= 0 || goal.targetToday > MAX_PLANNING_AMOUNT || !validMonth(goal.targetDate)
+    || !Number.isFinite(goal.currentAmount) || goal.currentAmount < 0 || goal.currentAmount > MAX_PLANNING_AMOUNT || !Number.isFinite(inflationRate)
+    || !Number.isFinite(annualReturnRate) || annualReturnRate < 0 || annualReturnRate > 1) return missingPlan();
   const months = monthsUntil(goal.targetDate, today);
   const years = Math.max(0, months) / 12;
   const targetAtDate = goal.targetToday * (1 + inflationRate) ** years;
   const monthlyRate = (1 + annualReturnRate) ** (1 / 12) - 1;
   const growth = (1 + monthlyRate) ** Math.max(0, months);
+  if (!Number.isFinite(targetAtDate) || !Number.isFinite(growth)) return missingPlan();
   const futureCurrentAmount = goal.currentAmount * growth;
   const shortfallAtDate = Math.max(0, targetAtDate - futureCurrentAmount);
   if (shortfallAtDate === 0) return { targetAtDate, monthsRemaining: months, shortfallAtDate, requiredMonthlyContribution: 0, contributionGap: 0, status: 'reached' };
@@ -61,6 +65,7 @@ export function planGoal(
   const requiredMonthlyContribution = monthlyRate === 0
     ? shortfallAtDate / months
     : shortfallAtDate * monthlyRate / (growth - 1);
+  if (!Number.isFinite(requiredMonthlyContribution)) return missingPlan();
   const contributionGap = Math.max(0, requiredMonthlyContribution - (goal.monthlyContribution ?? 0));
   return {
     targetAtDate,

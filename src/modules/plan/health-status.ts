@@ -156,11 +156,11 @@ export function renderHealthStatusBanner(state: FireOSState): string {
   return `
     <div class="health-banner health-banner--${assessment.status}">
       <button type="button" class="health-banner-header cursor-pointer" id="health-banner-toggle" aria-expanded="false" aria-controls="health-banner-details" style="display:flex; justify-content:space-between; align-items:center; width:100%; text-align:left;">
-        <div class="health-banner-title" style="display:flex; align-items:center; gap:0.5rem; font-family:'Fira Code', monospace;">
+        <span class="health-banner-title" style="display:flex; align-items:center; gap:0.5rem; font-family:'Fira Code', monospace;">
           ${iconMap[assessment.status]}
           <span>${assessment.headline}</span>
-        </div>
-        <div class="health-banner-chevron" style="transition: transform 0.3s ease;">▼</div>
+        </span>
+        <span class="health-banner-chevron" style="transition: transform 0.3s ease;">▼</span>
       </button>
       <div class="health-banner-details" id="health-banner-details" style="display: none; margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
         ${detailsHtml}
