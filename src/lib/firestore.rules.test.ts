@@ -179,6 +179,15 @@ describe('portfolio Firestore rules', () => {
       ...validEnvelope,
       data: { profile: { name: 'Test', age: 30, annualExpenses: 1, fiTarget: 1, monthlyIncome: 1, extra: true } },
     }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      data: { profile: { name: 'x'.repeat(201), age: 30, annualExpenses: 1, fiTarget: 1, monthlyIncome: 1 } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state/holdings/fund-5'), {
+      kind: 'mf',
+      value: { name: 'Example Fund', units: 1, startDate: '2026-02-30', monthlyAmount: 1000 },
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }));
     await assertSucceeds(setDoc(doc(db, 'users/owner-ranges/portfolio/state/holdings/fund-3'), {
       kind: 'mf',
       value: { name: 'Example Fund', units: 1, startDate: '2026-01-15', monthlyAmount: 1000 },
@@ -267,6 +276,10 @@ describe('portfolio Firestore rules', () => {
     await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
       ...validEnvelope,
       format: { normalizedArrays: true, backupVersion: 'fireOS-backup-v1', extra: true },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
+      ...validEnvelope,
+      format: { normalizedArrays: true },
     }));
     await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
       ...validEnvelope,

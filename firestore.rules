@@ -26,20 +26,18 @@ service cloud.firestore {
 
     function validProfile(value) {
       return value.keys().hasOnly(['name', 'dateOfBirth', 'age', 'taxSlabRate', 'annualExpenses', 'fiTarget', 'monthlyIncome'])
-        && value.keys().hasAll(['name', 'age', 'annualExpenses', 'fiTarget', 'monthlyIncome'])
-        && value.name is string
+        && value.name.size() <= 200
         && value.age is number && value.age >= 0 && value.age <= 150
         && value.annualExpenses is number && value.annualExpenses >= 0 && value.annualExpenses <= 1000000000000
         && value.fiTarget is number && value.fiTarget >= 0 && value.fiTarget <= 1000000000000000
-        && value.monthlyIncome is number
-        && (!('dateOfBirth' in value) || value.dateOfBirth is string)
-        && (!('taxSlabRate' in value) || value.taxSlabRate is number);
+        && value.monthlyIncome is number && value.monthlyIncome >= 0
+        && (!('dateOfBirth' in value) || value.dateOfBirth.size() <= 10)
+        && (!('taxSlabRate' in value) || (value.taxSlabRate is number && value.taxSlabRate >= 0 && value.taxSlabRate <= 100));
     }
 
     function validNiftyData(value) {
       return value is map
         && value.keys().hasOnly(['level', 'high52w', 'timestamp', 'source', 'status'])
-        && value.keys().hasAll(['level', 'high52w', 'timestamp', 'source'])
         && value.level is number
         && value.high52w is number
         && isIso(value.timestamp)
@@ -50,7 +48,6 @@ service cloud.firestore {
     function validEurInrData(value) {
       return value is map
         && value.keys().hasOnly(['rate', 'timestamp'])
-        && value.keys().hasAll(['rate', 'timestamp'])
         && value.rate is number
         && isIso(value.timestamp);
     }
@@ -72,7 +69,6 @@ function validWatchdogRules(value) {
     function validSwpSchedule(value) {
       return value is map
         && value.keys().hasOnly(['enabled', 'startDate', 'monthlyAmount', 'rate'])
-        && value.keys().hasAll(['enabled', 'startDate', 'monthlyAmount', 'rate'])
         && value.enabled is bool
         && isBoundedString(value.startDate, 20)
         && value.monthlyAmount is number
@@ -82,7 +78,6 @@ function validWatchdogRules(value) {
     function validTaxCalendar(value) {
       return value is map
         && value.keys().hasOnly(['lastLTCGHarvestDate', 'lastHarvestedAmount', 'harvestTarget'])
-        && value.keys().hasAll(['lastLTCGHarvestDate', 'lastHarvestedAmount', 'harvestTarget'])
         && isBoundedString(value.lastLTCGHarvestDate, 40)
         && value.lastHarvestedAmount is number
         && value.harvestTarget is number;
@@ -91,24 +86,20 @@ function validWatchdogRules(value) {
     function validInsurance(value) {
       return value is map
         && value.keys().hasOnly(['termLife', 'health', 'vehicle'])
-        && value.keys().hasAll(['termLife', 'health', 'vehicle'])
         && value.termLife is map
         && value.termLife.keys().hasOnly(['currentCover', 'annualPremium', 'expiryDate', 'provider'])
-        && value.termLife.keys().hasAll(['currentCover', 'annualPremium', 'expiryDate', 'provider'])
         && value.termLife.currentCover is number
         && value.termLife.annualPremium is number
         && isBoundedString(value.termLife.expiryDate, 40)
         && isBoundedString(value.termLife.provider, 200)
         && value.health is map
         && value.health.keys().hasOnly(['currentCover', 'annualPremium', 'familySize', 'provider'])
-        && value.health.keys().hasAll(['currentCover', 'annualPremium', 'familySize', 'provider'])
         && value.health.currentCover is number
         && value.health.annualPremium is number
         && value.health.familySize is number
         && isBoundedString(value.health.provider, 200)
         && value.vehicle is map
         && value.vehicle.keys().hasOnly(['covered', 'annualPremium'])
-        && value.vehicle.keys().hasAll(['covered', 'annualPremium'])
         && value.vehicle.covered is bool
         && value.vehicle.annualPremium is number;
     }
@@ -116,7 +107,6 @@ function validWatchdogRules(value) {
     function validEsopDetails(value) {
       return value is map
         && value.keys().hasOnly(['shares', 'holdings', 'grantPrice', 'liquidationShares', 'vestingFmv', 'currentPrice', 'slabRate', 'vestingSchedule', 'holdingPeriodYears'])
-        && value.keys().hasAll(['shares', 'grantPrice', 'vestingSchedule'])
         && value.shares is number
         && (!('holdings' in value) || (value.holdings is list && value.holdings.size() <= 20))
         && value.grantPrice is number
@@ -135,11 +125,10 @@ function validWatchdogRules(value) {
     function validMfEntry(value) {
       return value is map
         && value.keys().hasOnly(['name', 'schemeCode', 'units', 'startDate', 'monthlyAmount', 'costBasis', 'bucketId'])
-        && value.keys().hasAll(['name', 'units', 'startDate', 'monthlyAmount'])
         && isBoundedString(value.name, 200)
         && (!('schemeCode' in value) || isBoundedString(value.schemeCode, 50))
         && value.units is number && value.units >= 0 && value.units <= 1000000000000
-        && isBoundedString(value.startDate, 20) && value.startDate.matches('^\\d{4}-(0[1-9]|1[0-2])(-((0[1-9]|[12]\\d|3[01])))?$')
+        && isBoundedString(value.startDate, 20) && value.startDate.matches('^\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-9])|0[1-9]|1[0-2])$')
         && value.monthlyAmount is number && value.monthlyAmount >= 0 && value.monthlyAmount <= 1000000000000
         && (!('costBasis' in value) || (value.costBasis is number && value.costBasis >= 0 && value.costBasis <= 1000000000000000))
         && (!('bucketId' in value) || isBoundedString(value.bucketId, 20));
@@ -220,7 +209,6 @@ function validWatchdogRules(value) {
       return !('migration' in request.resource.data)
         || (request.resource.data.migration is map
           && request.resource.data.migration.keys().hasOnly(['source', 'completedAt', 'sourceVersion'])
-          && request.resource.data.migration.keys().hasAll(['source', 'completedAt', 'sourceVersion'])
           && request.resource.data.migration.source in ['localStorage', 'json']
           && isIso(request.resource.data.migration.completedAt)
           && isBoundedString(request.resource.data.migration.sourceVersion, 50));
@@ -230,7 +218,7 @@ function validWatchdogRules(value) {
       return !('format' in request.resource.data)
         || (request.resource.data.format.keys().hasOnly(['normalizedArrays', 'backupVersion'])
           && request.resource.data.format.normalizedArrays is bool
-          && isBoundedString(request.resource.data.format.backupVersion, 50));
+          && request.resource.data.format.backupVersion.size() <= 50);
     }
 
     function validEnvelope() {
