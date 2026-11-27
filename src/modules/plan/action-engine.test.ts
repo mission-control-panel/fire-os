@@ -26,4 +26,15 @@ describe('plan action engine', () => {
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;img');
   });
+
+  it('does not report missing insurance when an active detailed policy exists', () => {
+    const state = initializeState();
+    state.insurance.policies = [{
+      id: 'policy-1', kind: 'term', ownerType: 'personal', provider: 'Synthetic insurer', coverAmount: 10_000_000,
+      annualPremium: 20_000, expiryDate: '2035-01-01', deductible: 0, topUpCover: 0, dependents: 0,
+      waitingPeriodMonths: 0, exclusions: '',
+    }];
+    const actions = generateActionItems(state);
+    expect(actions.find((item) => item.id === 'insurance-missing')).toBeUndefined();
+  });
 });

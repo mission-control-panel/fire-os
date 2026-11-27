@@ -69,7 +69,20 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
   // 3 & 4. Insurance (urgent / this-month)
   const ins = state.insurance;
   const annualIncome = state.profile.monthlyIncome ? state.profile.monthlyIncome * 12 : 0;
-  if (!ins || (ins.termLife.currentCover === 0 && ins.health.currentCover === 0)) {
+  const insuranceNeeds = ins ? assessInsuranceNeeds({
+    annualIncome,
+    dependents: Math.max(0, ins.health.familySize - 1),
+    outstandingDebt: Object.values(state.liabilities ?? {}).reduce((sum, liability) => sum + Math.max(0, liability.amount || 0), 0),
+    futureGoalShortfall: (state.goals ?? []).reduce((sum, goal) => sum + Math.max(0, planGoal(goal).shortfallAtDate), 0),
+    accessibleAssets: portfolioSafetyReport(state).liquidity.accessibleValue ?? 0,
+    familySize: ins.health.familySize,
+    currentTermCover: ins.termLife.currentCover,
+    currentHealthCover: ins.health.currentCover,
+    legacyTermExpiryDate: ins.termLife.expiryDate,
+    legacyHealthExpiryDate: ins.health.expiryDate,
+    policies: ins.policies,
+  }) : null;
+  if (!ins || (insuranceNeeds?.currentTermCover === 0 && insuranceNeeds.currentHealthCover === 0)) {
     addAction({
       id: 'insurance-missing',
       priority: 'urgent',
@@ -78,23 +91,9 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
       description: 'Set up your insurance data in the Insurance tab to evaluate your protection.',
     });
   } else {
-    const insuranceNeeds = assessInsuranceNeeds({
-      annualIncome,
-      dependents: Math.max(0, ins.health.familySize - 1),
-      outstandingDebt: 0,
-      futureGoalShortfall: 0,
-      accessibleAssets: 0,
-      familySize: ins.health.familySize,
-      currentTermCover: ins.termLife.currentCover,
-      currentHealthCover: ins.health.currentCover,
-      legacyTermExpiryDate: ins.termLife.expiryDate,
-      legacyHealthExpiryDate: ins.health.expiryDate,
-      policies: ins.policies,
-    });
-    
     let gaps = [];
-    if (insuranceNeeds.termGap > 0) gaps.push(`term gap ₹${Math.round(insuranceNeeds.termGap / 100000)}L`);
-    if (insuranceNeeds.healthGap > 0) gaps.push(`health gap ₹${Math.round(insuranceNeeds.healthGap / 100000)}L`);
+    if (insuranceNeeds?.termGap && insuranceNeeds.termGap > 0) gaps.push(`term gap ₹${Math.round(insuranceNeeds.termGap / 100000)}L`);
+    if (insuranceNeeds?.healthGap && insuranceNeeds.healthGap > 0) gaps.push(`health gap ₹${Math.round(insuranceNeeds.healthGap / 100000)}L`);
     
     if (gaps.length > 0) {
       addAction({

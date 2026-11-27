@@ -2,6 +2,7 @@ import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, fiProgress } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 import { assessInsuranceNeeds } from '../insurance/insurance-planning';
+import { planGoal } from './goal-planning';
 
 export interface HealthAssessment {
   status: 'green' | 'yellow' | 'red';
@@ -20,6 +21,9 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   const fi = fiProgress(state);
   // Default assumptions for missing values to avoid crashes
   const annualIncome = state.profile.monthlyIncome ? state.profile.monthlyIncome * 12 : 0;
+  const safety = portfolioSafetyReport(state);
+  const outstandingDebt = Object.values(state.liabilities ?? {}).reduce((sum, liability) => sum + Math.max(0, liability.amount || 0), 0);
+  const futureGoalShortfall = (state.goals ?? []).reduce((sum, goal) => sum + Math.max(0, planGoal(goal).shortfallAtDate), 0);
   
   // Dimensions
   let fiStatus: 'green' | 'yellow' | 'red' = 'green';
@@ -43,9 +47,9 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   const insuranceNeeds = ins ? assessInsuranceNeeds({
     annualIncome,
     dependents: Math.max(0, ins.health.familySize - 1),
-    outstandingDebt: 0,
-    futureGoalShortfall: 0,
-    accessibleAssets: 0,
+    outstandingDebt,
+    futureGoalShortfall,
+    accessibleAssets: safety.liquidity.accessibleValue ?? 0,
     familySize: ins.health.familySize,
     currentTermCover: ins.termLife.currentCover,
     currentHealthCover: ins.health.currentCover,
@@ -85,7 +89,7 @@ export function assessHealth(state: FireOSState): HealthAssessment {
     savingsDetail = 'No income data configured.';
   }
 
-  const liquidity = portfolioSafetyReport(state).liquidity;
+  const liquidity = safety.liquidity;
   let liquidityStatus: 'green' | 'yellow' | 'red' = 'yellow';
   let liquidityDetail = 'Liquidity is not fully assessable yet.';
   if (liquidity.status === 'available' && liquidity.runwayMonths !== null) {

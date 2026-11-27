@@ -5,6 +5,8 @@
 import { formatCurrency } from '../../lib/formatters';
 import { createFeatureContext, type FeatureContext } from '../../core/feature-context';
 import { assessInsuranceNeeds, policyLifecycle } from './insurance-planning';
+import { portfolioSafetyReport } from '../financial-safety/safety-engine';
+import { planGoal } from '../plan/goal-planning';
 import './styles.css';
 
 const DEBOUNCE_MS = 500;
@@ -30,12 +32,15 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
 
   const familySize = state.insurance.health.familySize || 1;
   const currentHealthCover = state.insurance.health.currentCover || 0;
+  const safety = portfolioSafetyReport(state);
+  const outstandingDebt = Object.values(state.liabilities ?? {}).reduce((sum, liability) => sum + Math.max(0, liability.amount || 0), 0);
+  const futureGoalShortfall = (state.goals ?? []).reduce((sum, goal) => sum + Math.max(0, planGoal(goal).shortfallAtDate), 0);
   const needs = assessInsuranceNeeds({
     annualIncome,
     dependents: Math.max(0, familySize - 1),
-    outstandingDebt: 0,
-    futureGoalShortfall: 0,
-    accessibleAssets: 0,
+    outstandingDebt,
+    futureGoalShortfall,
+    accessibleAssets: safety.liquidity.accessibleValue ?? 0,
     familySize,
     currentTermCover,
     currentHealthCover,
@@ -48,7 +53,7 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
   const policyRows = (state.insurance.policies ?? []).map((policy) => {
     const lifecycle = policyLifecycle(policy);
     const label = lifecycle.status === 'expiring-soon' ? `Renew within ${lifecycle.daysRemaining} days` : lifecycle.status.replace('-', ' ');
-    return `<li><strong>${escapeHtml(policy.kind)}</strong> · ${escapeHtml(policy.provider || 'Provider not recorded')} · ${escapeHtml(label)} <button type="button" data-policy-delete="${escapeHtml(policy.id)}">Remove</button></li>`;
+    return `<li><strong>${escapeHtml(policy.kind)}</strong> · ${escapeHtml(policy.provider || 'Provider not recorded')} · ${escapeHtml(label)} <button type="button" aria-label="Remove ${escapeHtml(policy.kind)} policy from ${escapeHtml(policy.provider || 'provider not recorded')}" data-policy-delete="${escapeHtml(policy.id)}">Remove</button></li>`;
   }).join('');
 
   const successIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;color:#2e7d32;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>`;
@@ -150,7 +155,7 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
 }
 
 function attachInsuranceHandlers(context: FeatureContext) {
-  const inputs = document.querySelectorAll('.insurance-form input');
+  const inputs = document.querySelectorAll('#term-form input, #health-form input');
   inputs.forEach(input => {
     input.addEventListener('input', () => debounceInsuranceSave(context));
   });
