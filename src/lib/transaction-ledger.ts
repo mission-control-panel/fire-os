@@ -235,7 +235,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
-  return Object.keys(value).every((key) => keys.includes(key));
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === keys.length && actualKeys.every((key) => keys.includes(key));
 }
 
 function ledgerMetadata(value: Record<string, unknown>): { metadata?: LedgerImportPreview['metadata']; error?: string } {

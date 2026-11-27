@@ -55,6 +55,12 @@ describe('transaction ledger', () => {
     });
     expect(preview.errors).toContain('Import metadata is malformed');
     expect(() => applyLedgerImport(createTransactionLedger(), preview, 'replace')).toThrow('Cannot apply invalid import');
+
+    const missingField = previewLedgerImport({
+      accounts: { brokerage: { id: 'brokerage', name: 'Brokerage' } },
+      instruments: {}, lots: [], liabilities: [], transactions: [],
+    });
+    expect(missingField.errors).toContain('Import metadata is malformed');
   });
 
   it('keeps same-day transactions distinct and consumes FIFO cost on sale', () => {
