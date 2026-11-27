@@ -201,6 +201,12 @@ with exponential delay for transient failures. Firestore owns
 validate envelope/holding structure. Payload metrics warn above 750 KB against
 Firestore's 1 MiB document ceiling.
 
+The `/portfolio` workspace is the first ledger-backed transaction surface. It
+records manual events in paise and micro-units, previews JSON/CSV imports,
+rejects duplicate rows before application, and derives FIFO holdings through
+`reconcileLedger()`. Merge and replace imports are explicit; neither mode
+creates external financial connections or orders.
+
 ## Data and calculation flows
 
 Market clients live in `src/modules/api/`. Mutual fund NAV calls MFAPI directly

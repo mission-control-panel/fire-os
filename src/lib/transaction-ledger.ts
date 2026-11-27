@@ -109,6 +109,17 @@ const PROVENANCE = new Set<CostProvenance>(['exact', 'estimated', 'unknown']);
 const MAX_ID_LENGTH = 150;
 const MAX_REFERENCE_LENGTH = 100;
 const MAX_NOTE_LENGTH = 1000;
+const SAME_DAY_TRANSACTION_ORDER: Record<LedgerTransactionType, number> = {
+  purchase: 10,
+  opening_balance: 10,
+  transfer_out: 20,
+  transfer_in: 30,
+  split: 40,
+  sale: 50,
+  dividend: 60,
+  interest: 60,
+  fee: 60,
+};
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -122,6 +133,17 @@ function normaliseDate(value: unknown): string | null {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(`${value}T00:00:00Z`);
   return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? null : value;
+}
+
+function sortTransactions(a: LedgerTransaction, b: LedgerTransaction): number {
+  const dateOrder = a.date.localeCompare(b.date);
+  if (dateOrder !== 0) return dateOrder;
+  if (a.type === 'transfer_in' && a.linkedTransactionId === b.id) return 1;
+  if (b.type === 'transfer_in' && b.linkedTransactionId === a.id) return -1;
+  // Same-day streams are intentionally deterministic: acquisitions and
+  // transfers precede disposals, so a valid buy-then-sell day is replayable
+  // even when source IDs sort in the opposite order.
+  return SAME_DAY_TRANSACTION_ORDER[a.type] - SAME_DAY_TRANSACTION_ORDER[b.type] || a.id.localeCompare(b.id);
 }
 
 export function createTransactionLedger(): TransactionLedger {
@@ -151,9 +173,13 @@ function validateTransaction(value: unknown, rowNumber: number): LedgerImportRow
   if (row.type === 'split' && (!isSafeInteger(row.splitRatioNumerator) || (row.splitRatioNumerator as number) <= 0 || !isSafeInteger(row.splitRatioDenominator) || (row.splitRatioDenominator as number) <= 0)) errors.push('split ratios must be positive safe integers');
   if (errors.length) return { rowNumber, transaction: null, errors };
 
+  const canonicalDedupKey = transactionDedupKey({ id: row.id as string, date: date as string, type: row.type as LedgerTransactionType, accountId: row.accountId as string, instrumentId: row.instrumentId as string | undefined, amountPaise: row.amountPaise as number, quantityMicros: row.quantityMicros as number | undefined, linkedTransactionId: row.linkedTransactionId as string | undefined });
+  if (typeof row.dedupKey === 'string' && row.dedupKey && row.dedupKey !== canonicalDedupKey) errors.push('dedupKey must match the transaction fields');
+  if (errors.length) return { rowNumber, transaction: null, errors };
+
   const transaction = {
     id: row.id as string,
-    dedupKey: typeof row.dedupKey === 'string' && row.dedupKey ? row.dedupKey : transactionDedupKey({ id: row.id as string, date: date as string, type: row.type as LedgerTransactionType, accountId: row.accountId as string, instrumentId: row.instrumentId as string | undefined, amountPaise: row.amountPaise as number, quantityMicros: row.quantityMicros as number | undefined, linkedTransactionId: row.linkedTransactionId as string | undefined }),
+    dedupKey: canonicalDedupKey,
     date: date as string,
     type: row.type as LedgerTransactionType,
     accountId: row.accountId as string,
@@ -204,15 +230,34 @@ function coerceCsvRow(row: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-function ledgerMetadata(value: Record<string, unknown>): LedgerImportPreview['metadata'] | undefined {
-  if (!['accounts', 'instruments', 'lots', 'liabilities'].some((key) => key in value)) return undefined;
-  if (!value.accounts || !value.instruments || !value.lots || !value.liabilities || !Array.isArray(value.lots) || !Array.isArray(value.liabilities)) return undefined;
-  return {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === keys.length && actualKeys.every((key) => keys.includes(key));
+}
+
+function ledgerMetadata(value: Record<string, unknown>): { metadata?: LedgerImportPreview['metadata']; error?: string } {
+  if (!['accounts', 'instruments', 'lots', 'liabilities'].some((key) => key in value)) return {};
+  if (!isRecord(value.accounts) || !isRecord(value.instruments) || !Array.isArray(value.lots) || !Array.isArray(value.liabilities)
+    || value.lots.length > MAX_LEDGER_ROWS || value.liabilities.length > 50) return { error: 'Import metadata is malformed' };
+  const validAccounts = Object.entries(value.accounts).every(([key, account]) => isRecord(account) && hasExactKeys(account, ['id', 'name', 'currency'])
+    && key.length <= 100 && typeof account.id === 'string' && account.id.length <= 100 && typeof account.name === 'string' && account.name.length <= 200 && typeof account.currency === 'string' && account.currency.length <= 10);
+  const validInstruments = Object.entries(value.instruments).every(([key, instrument]) => isRecord(instrument) && hasExactKeys(instrument, ['id', 'name', 'assetClass', 'currency'])
+    && key.length <= 100 && typeof instrument.id === 'string' && instrument.id.length <= 100 && typeof instrument.name === 'string' && instrument.name.length <= 200 && typeof instrument.assetClass === 'string' && instrument.assetClass.length <= 50 && typeof instrument.currency === 'string' && instrument.currency.length <= 10);
+  const validLots = value.lots.every((lot) => isRecord(lot) && hasExactKeys(lot, ['id', 'transactionId', 'accountId', 'instrumentId', 'acquiredDate', 'quantityMicros', 'costPaise', 'costProvenance'])
+    && typeof lot.id === 'string' && lot.id.length <= 150 && typeof lot.transactionId === 'string' && lot.transactionId.length <= 150 && typeof lot.accountId === 'string' && lot.accountId.length <= 100 && typeof lot.instrumentId === 'string' && lot.instrumentId.length <= 100 && normaliseDate(lot.acquiredDate) !== null && isSafeInteger(lot.quantityMicros) && (lot.quantityMicros as number) >= 0 && isSafeInteger(lot.costPaise) && (lot.costPaise as number) >= 0 && PROVENANCE.has(lot.costProvenance as CostProvenance));
+  const validLiabilities = value.liabilities.every((liability) => isRecord(liability) && hasExactKeys(liability, ['id', 'name', 'balancePaise', 'currency'])
+    && typeof liability.id === 'string' && liability.id.length <= 100 && typeof liability.name === 'string' && liability.name.length <= 200 && isSafeInteger(liability.balancePaise) && (liability.balancePaise as number) >= 0 && typeof liability.currency === 'string' && liability.currency.length <= 10);
+  if (!validAccounts || !validInstruments || !validLots || !validLiabilities) return { error: 'Import metadata is malformed' };
+  return { metadata: {
     accounts: value.accounts as TransactionLedger['accounts'],
     instruments: value.instruments as TransactionLedger['instruments'],
     lots: value.lots as TransactionLedger['lots'],
     liabilities: value.liabilities as TransactionLedger['liabilities'],
-  };
+  } };
 }
 
 export function previewLedgerImport(input: string | unknown, existing: TransactionLedger = createTransactionLedger()): LedgerImportPreview {
@@ -225,13 +270,17 @@ export function previewLedgerImport(input: string | unknown, existing: Transacti
       if (Array.isArray(parsed)) rawRows = parsed;
       else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.transactions)) {
         rawRows = parsed.transactions;
-        metadata = ledgerMetadata(parsed);
+      const metadataResult = ledgerMetadata(parsed);
+      metadata = metadataResult.metadata;
+      if (metadataResult.error) return { schemaVersion: LEDGER_SCHEMA_VERSION, rows: [], validRows: [], errors: [metadataResult.error], duplicateCount: 0, metadata };
       } else rawRows = parseCsv(input).map(coerceCsvRow);
     } else if (Array.isArray(input)) {
       rawRows = input;
     } else if (input && typeof input === 'object' && Array.isArray((input as { transactions?: unknown[] }).transactions)) {
       rawRows = (input as { transactions: unknown[] }).transactions;
-      metadata = ledgerMetadata(input as Record<string, unknown>);
+      const metadataResult = ledgerMetadata(input as Record<string, unknown>);
+      metadata = metadataResult.metadata;
+      if (metadataResult.error) return { schemaVersion: LEDGER_SCHEMA_VERSION, rows: [], validRows: [], errors: [metadataResult.error], duplicateCount: 0, metadata };
     } else {
       rawRows = [];
     }
@@ -240,14 +289,16 @@ export function previewLedgerImport(input: string | unknown, existing: Transacti
   }
   if (rawRows.length > MAX_LEDGER_ROWS) return { schemaVersion: LEDGER_SCHEMA_VERSION, rows: [], validRows: [], errors: [`Import exceeds ${MAX_LEDGER_ROWS} rows`], duplicateCount: 0, metadata };
   const seen = new Set(existing.transactions.map((transaction) => transaction.dedupKey));
+  const seenIds = new Set(existing.transactions.map((transaction) => transaction.id));
   let duplicateCount = 0;
   const rows = rawRows.map((raw, index) => {
     const checked = validateTransaction(raw, index + 2);
-    if (checked.transaction && seen.has(checked.transaction.dedupKey)) {
+    if (checked.transaction && (seen.has(checked.transaction.dedupKey) || seenIds.has(checked.transaction.id))) {
       duplicateCount += 1;
-      checked.errors.push('Duplicate transaction');
+      checked.errors.push('Duplicate transaction id or deduplication key');
       checked.transaction = null;
     } else if (checked.transaction) seen.add(checked.transaction.dedupKey);
+    if (checked.transaction) seenIds.add(checked.transaction.id);
     return checked;
   });
   return { schemaVersion: LEDGER_SCHEMA_VERSION, rows, validRows: rows.flatMap((row) => row.transaction ? [row.transaction] : []), errors: rows.flatMap((row) => row.errors.map((error) => `Row ${row.rowNumber}: ${error}`)), duplicateCount, metadata };
@@ -302,13 +353,7 @@ export function reconcileLedger(ledger: TransactionLedger): ReconciledHolding[] 
   };
   const transferCosts = new Map<string, { quantityMicros: number; costPaise: number; costProvenance: CostProvenance }>();
   const transferSources = new Map<string, LedgerTransaction>();
-  const transactions = [...ledger.transactions].sort((a, b) => {
-    const dateOrder = a.date.localeCompare(b.date);
-    if (dateOrder !== 0) return dateOrder;
-    if (a.type === 'transfer_in' && a.linkedTransactionId === b.id) return 1;
-    if (b.type === 'transfer_in' && b.linkedTransactionId === a.id) return -1;
-    return a.id.localeCompare(b.id);
-  });
+  const transactions = [...ledger.transactions].sort(sortTransactions);
   for (const transaction of transactions) {
     const quantity = transaction.quantityMicros ?? 0;
     if (transaction.type === 'purchase' || transaction.type === 'opening_balance') addLot(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
@@ -382,13 +427,7 @@ export function reconcileLedgerLots(ledger: TransactionLedger, onSale?: (transac
     queues.set(key(transaction), queue);
     return consumedLots;
   };
-  const transactions = [...ledger.transactions].sort((a, b) => {
-    const dateOrder = a.date.localeCompare(b.date);
-    if (dateOrder !== 0) return dateOrder;
-    if (a.type === 'transfer_in' && a.linkedTransactionId === b.id) return 1;
-    if (b.type === 'transfer_in' && b.linkedTransactionId === a.id) return -1;
-    return a.id.localeCompare(b.id);
-  });
+  const transactions = [...ledger.transactions].sort(sortTransactions);
   for (const transaction of transactions) {
     const quantity = transaction.quantityMicros ?? 0;
     if (transaction.type === 'purchase' || transaction.type === 'opening_balance') add(transaction, quantity, transaction.amountPaise, transaction.costProvenance);
@@ -446,11 +485,13 @@ export function applyLedgerImport(ledger: TransactionLedger, preview: LedgerImpo
     next.liabilities = clone(preview.metadata.liabilities);
   }
   const existing = new Set(next.transactions.map((transaction) => transaction.dedupKey));
+  const existingIds = new Set(next.transactions.map((transaction) => transaction.id));
   let imported = 0;
   let skippedDuplicates = 0;
   for (const transaction of preview.validRows) {
-    if (existing.has(transaction.dedupKey)) { skippedDuplicates += 1; continue; }
+    if (existing.has(transaction.dedupKey) || existingIds.has(transaction.id)) { skippedDuplicates += 1; continue; }
     existing.add(transaction.dedupKey);
+    existingIds.add(transaction.id);
     next.transactions.push(clone(transaction));
     imported += 1;
   }

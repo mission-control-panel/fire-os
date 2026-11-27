@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyLedgerImport, createTransactionLedger, previewLedgerImport, reconcileLedger, reconcileLedgerLots, rollbackLedgerImport, type LedgerTransaction } from './transaction-ledger';
+import { applyLedgerImport, createTransactionLedger, previewLedgerImport, reconcileLedger, reconcileLedgerLots, rollbackLedgerImport, transactionDedupKey, type LedgerTransaction } from './transaction-ledger';
 
-const purchase = (id: string, amountPaise = 125_000, quantityMicros = 10_000): LedgerTransaction => ({
-  id, dedupKey: id, date: '2026-04-01', type: 'purchase', accountId: 'brokerage', instrumentId: 'fund-a', amountPaise, quantityMicros, costProvenance: 'exact',
-});
+const purchase = (id: string, amountPaise = 125_000, quantityMicros = 10_000): LedgerTransaction => {
+  const transaction = { id, date: '2026-04-01', type: 'purchase' as const, accountId: 'brokerage', instrumentId: 'fund-a', amountPaise, quantityMicros, costProvenance: 'exact' as const };
+  return { ...transaction, dedupKey: transactionDedupKey(transaction) };
+};
 
 describe('transaction ledger', () => {
   it('uses deterministic paise quantities and reconciles holdings', () => {
@@ -27,6 +28,39 @@ describe('transaction ledger', () => {
     expect(secondPreview.duplicateCount).toBe(1);
     expect(secondPreview.validRows).toHaveLength(0);
     expect(rollbackLedgerImport(first.rollback)).toEqual(ledger);
+  });
+
+  it('rejects forged deduplication keys and duplicate ids', () => {
+    const original = purchase('same-id');
+    const forged = { ...original, dedupKey: 'forged-key' };
+    expect(previewLedgerImport([forged]).errors).toContain('Row 2: dedupKey must match the transaction fields');
+    const duplicateId = { ...purchase('same-id-2'), amountPaise: 999, dedupKey: transactionDedupKey({ ...purchase('same-id-2'), amountPaise: 999 }) };
+    const preview = previewLedgerImport([purchase('same-id-2'), duplicateId]);
+    expect(preview.duplicateCount).toBe(1);
+    expect(preview.errors).toContain('Row 3: Duplicate transaction id or deduplication key');
+  });
+
+  it('replays same-day acquisitions before sales regardless of ids', () => {
+    const ledger = createTransactionLedger();
+    const buy = { ...purchase('z-buy', 100_000, 10_000), date: '2026-04-01' };
+    const sale = { id: 'a-sale', date: '2026-04-01', type: 'sale' as const, accountId: 'brokerage', instrumentId: 'fund-a', amountPaise: 110_000, quantityMicros: 10_000, costProvenance: 'exact' as const };
+    const { ledger: applied } = applyLedgerImport(ledger, previewLedgerImport([buy, sale]), 'merge');
+    expect(reconcileLedger(applied)).toEqual([]);
+  });
+
+  it('rejects malformed replacement metadata before applying it', () => {
+    const preview = previewLedgerImport({
+      accounts: { brokerage: { id: 'brokerage', name: 'Brokerage', currency: 'INR', unexpected: true } },
+      instruments: {}, lots: [], liabilities: [], transactions: [],
+    });
+    expect(preview.errors).toContain('Import metadata is malformed');
+    expect(() => applyLedgerImport(createTransactionLedger(), preview, 'replace')).toThrow('Cannot apply invalid import');
+
+    const missingField = previewLedgerImport({
+      accounts: { brokerage: { id: 'brokerage', name: 'Brokerage' } },
+      instruments: {}, lots: [], liabilities: [], transactions: [],
+    });
+    expect(missingField.errors).toContain('Import metadata is malformed');
   });
 
   it('keeps same-day transactions distinct and consumes FIFO cost on sale', () => {
@@ -67,7 +101,8 @@ describe('transaction ledger', () => {
   });
 
   it('keeps unknown cost provenance explicit', () => {
-    const preview = previewLedgerImport([{ ...purchase('opening'), type: 'opening_balance', amountPaise: 0, costProvenance: 'unknown' }]);
+    const { dedupKey: _dedupKey, ...opening } = purchase('opening');
+    const preview = previewLedgerImport([{ ...opening, type: 'opening_balance', amountPaise: 0, costProvenance: 'unknown' }]);
     const { ledger } = applyLedgerImport(createTransactionLedger(), preview, 'merge');
     expect(reconcileLedger(ledger)[0].costProvenance).toBe('unknown');
   });

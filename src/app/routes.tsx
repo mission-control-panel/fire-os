@@ -5,11 +5,13 @@ import { AppLayout } from './layout';
 import { ROUTE_META } from './routes/route-meta';
 import { DashboardRoute } from './routes/dashboard';
 import { GoalsRoute } from './routes/goals-wizard';
+import { PortfolioWorkspaceRoute } from './routes/portfolio';
 
 /** Routes whose React implementation owns the container id (migrated). */
 const MIGRATED_ROUTES: Record<string, ReactNode> = {
   dashboard: <DashboardRoute />,
   goals: <GoalsRoute />,
+  portfolio: <PortfolioWorkspaceRoute />,
 };
 
 /**

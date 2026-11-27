@@ -33,6 +33,12 @@ export const ROUTE_META: RouteMeta[] = [
     description: 'Net worth, asset allocation, SIP tracking and market performance over time.',
   },
   {
+    path: '/portfolio',
+    id: 'portfolio',
+    title: 'Portfolio Workspace — FIRE OS',
+    description: 'Record, import and reconcile portfolio transactions and holdings.',
+  },
+  {
     path: '/calculators',
     id: 'calculators',
     title: 'Calculators — FIRE OS',
