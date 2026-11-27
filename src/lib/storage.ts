@@ -38,6 +38,13 @@ let activeSyncCoordinator: SyncCoordinator | null = null;
 let activeEnvelope: PortfolioEnvelope | null = null;
 let activeStorageKey: string | null = ANONYMOUS_STORAGE_KEY;
 let activeStorageUid: string | null = null;
+let writeSequence = 0;
+
+function createWriteId(): string {
+  writeSequence += 1;
+  const random = globalThis.crypto?.randomUUID?.();
+  return random ?? `write-${Date.now().toString(36)}-${writeSequence.toString(36)}`;
+}
 
 function getUserStorageKey(uid: string): string {
   if (!USER_ID_PATTERN.test(uid)) {
@@ -286,6 +293,7 @@ export async function queuePortfolioSave(uid: string, state: FireOSState): Promi
       clientId: 'browser',
       appVersion: '2.2.0',
       platform: 'web',
+      lastWriteId: createWriteId(),
     },
     state._lastSavedAt,
     activeEnvelope ?? undefined,

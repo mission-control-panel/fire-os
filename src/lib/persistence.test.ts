@@ -199,6 +199,18 @@ describe('portfolio persistence contracts', () => {
     expect(next.lastSavedAt).toBe('2025-01-02T00:00:00.000Z');
   });
 
+  it('increments the revision only when persisted data changes', () => {
+    const state = initializeState();
+    const first = buildEnvelopeFromState(state, client, '2025-01-01T00:00:00.000Z');
+    const unchanged = buildEnvelopeFromState(state, client, '2025-01-02T00:00:00.000Z', first);
+    state.profile.name = 'Revisioned';
+    const changed = buildEnvelopeFromState(state, client, '2025-01-03T00:00:00.000Z', unchanged);
+
+    expect(first.revision).toBe(1);
+    expect(unchanged.revision).toBe(1);
+    expect(changed.revision).toBe(2);
+  });
+
   it('resolves equal timestamps with the client tie-breaker', () => {
     const state = initializeState();
     state.profile.name = 'local';

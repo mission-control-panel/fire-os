@@ -23,6 +23,15 @@ export const PORTFOLIO_DOCUMENT = 'state';
 
 export type FirestoreServices = ReturnType<typeof getFirebaseServices>;
 
+export class PortfolioWriteConflictError extends Error {
+  readonly code = 'conflict';
+
+  constructor(uid: string, revision: number) {
+    super(`Portfolio write for ${uid} is stale at revision ${revision}`);
+    this.name = 'PortfolioWriteConflictError';
+  }
+}
+
 let services: FirestoreServices | null = null;
 function portfolioRef(db: Firestore, uid: string) {
   return doc(db, 'users', uid, PORTFOLIO_COLLECTION, PORTFOLIO_DOCUMENT);
@@ -36,6 +45,7 @@ type StoredMfEntry = {
   kind: 'mf';
   value: SIPFund;
   updatedAt: string;
+  revision?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -50,16 +60,22 @@ function isStoredMfEntry(value: unknown): value is StoredMfEntry {
     && typeof entry.units === 'number'
     && typeof entry.startDate === 'string'
     && typeof entry.monthlyAmount === 'number'
-    && (entry.costBasis === undefined || typeof entry.costBasis === 'number');
+    && (entry.costBasis === undefined || typeof entry.costBasis === 'number')
+    && (value.revision === undefined
+      || (typeof value.revision === 'number'
+        && Number.isSafeInteger(value.revision)
+        && value.revision >= 0
+        && value.revision <= 1_000_000_000));
 }
 
-async function readMfEntries(db: Firestore, uid: string): Promise<{ mf: Record<string, SIPFund>; timestamps: Record<string, string> }> {
+async function readMfEntries(db: Firestore, uid: string, expectedRevision?: number): Promise<{ mf: Record<string, SIPFund>; timestamps: Record<string, string> }> {
   const mf: Record<string, SIPFund> = {};
   const timestamps: Record<string, string> = {};
   const snapshot = await getDocs(holdingsRef(db, uid));
   for (const holding of snapshot.docs) {
     const value = holding.data();
     if (!isStoredMfEntry(value)) throw new Error(`Firestore holding document ${holding.id} has an invalid entry`);
+    if (expectedRevision !== undefined && value.revision !== expectedRevision) continue;
     mf[holding.id] = value.value;
     timestamps[holding.id] = value.updatedAt;
   }
@@ -102,7 +118,7 @@ export async function loadPortfolio(uid: string): Promise<PortfolioEnvelope | nu
   if (!isPortfolioEnvelope(migrated)) {
     throw new Error('Firestore portfolio document has an invalid envelope');
   }
-  return attachMfEntries(migrated, await readMfEntries(initializedServices.db, uid));
+  return attachMfEntries(migrated, await readMfEntries(initializedServices.db, uid, migrated.revision));
 }
 
 export async function savePortfolio(uid: string, envelope: PortfolioEnvelope): Promise<void> {
@@ -111,10 +127,11 @@ export async function savePortfolio(uid: string, envelope: PortfolioEnvelope): P
   const { data, entryUpdatedAt: _entryUpdatedAt, ...envelopeWithoutDynamicMetadata } = envelope;
   const { mf, ...stateData } = data;
   void _entryUpdatedAt;
-  const stateBatch = writeBatch(initializedServices.db);
+  const revision = envelope.revision ?? 1;
   const stateDocument = {
     ...envelopeWithoutDynamicMetadata,
     schemaVersion: 'fireOS_v5',
+    revision,
     data: stateData,
   };
   const metrics = measurePortfolioWrite(stateDocument, mf ?? {}, envelope.lastSavedAt);
@@ -127,23 +144,54 @@ export async function savePortfolio(uid: string, envelope: PortfolioEnvelope): P
       holdingCount: metrics.holdingCount,
     });
   }
-  stateBatch.set(portfolioRef(initializedServices.db, uid), stateDocument);
-  await stateBatch.commit();
-
-  const existingHoldings = await getDocs(holdingsRef(initializedServices.db, uid));
   const currentEntries = mf ?? {};
-  const holdingsBatch = writeBatch(initializedServices.db);
-  for (const holding of existingHoldings.docs) {
-    if (!(holding.id in currentEntries)) holdingsBatch.delete(holding.ref);
-  }
-  for (const [id, value] of Object.entries(currentEntries)) {
-    holdingsBatch.set(doc(holdingsRef(initializedServices.db, uid), id), {
-      kind: 'mf',
-      value,
-      updatedAt: envelope.lastSavedAt,
+  const holdingsSnapshot = await getDocs(holdingsRef(initializedServices.db, uid));
+  const holdingCollection = holdingsRef(initializedServices.db, uid);
+  const knownHoldingRefs = new Map<string, ReturnType<typeof doc>>();
+  holdingsSnapshot.docs.forEach((holding) => knownHoldingRefs.set(holding.id, holding.ref));
+  Object.keys(currentEntries).forEach((id) => knownHoldingRefs.set(id, doc(holdingCollection, id)));
+
+  await runTransaction(initializedServices.db, async (transaction) => {
+    const stateRef = portfolioRef(initializedServices.db, uid);
+    const stateSnapshot = await transaction.get(stateRef);
+    const existingState = stateSnapshot.exists() ? stateSnapshot.data() : undefined;
+    const incomingWriteId = envelope.client?.lastWriteId;
+    const existingWriteId = isRecord(existingState?.client) && typeof existingState.client.lastWriteId === 'string'
+      ? existingState.client.lastWriteId
+      : undefined;
+    const existingRevision = typeof existingState?.revision === 'number' && Number.isFinite(existingState.revision)
+      ? existingState.revision
+      : 0;
+
+    // Firestore may retry a transaction after a network response is lost. A
+    // repeated write id is a true no-op; all child writes are in this same
+    // transaction, so there is no partial batch left to repair.
+    if (incomingWriteId && existingWriteId === incomingWriteId) return;
+    if (existingState && existingRevision >= revision) {
+      throw new PortfolioWriteConflictError(uid, existingRevision);
+    }
+
+    const existingHoldingSnapshots = await Promise.all(
+      [...knownHoldingRefs.values()].map((holdingRef) => transaction.get(holdingRef)),
+    );
+    transaction.set(stateRef, stateDocument);
+    existingHoldingSnapshots.forEach((holdingSnapshot, index) => {
+      const id = [...knownHoldingRefs.keys()][index];
+      const holdingRef = knownHoldingRefs.get(id);
+      if (!holdingRef) return;
+      if (!(id in currentEntries)) {
+        if (holdingSnapshot.exists()) transaction.delete(holdingRef);
+        return;
+      }
+      const value = currentEntries[id];
+      transaction.set(holdingRef, {
+        kind: 'mf',
+        value,
+        updatedAt: envelope.lastSavedAt,
+        revision,
+      });
     });
-  }
-  if (existingHoldings.size > 0 || Object.keys(currentEntries).length > 0) await holdingsBatch.commit();
+  });
 }
 
 export function onPortfolioChange(
@@ -154,9 +202,12 @@ export function onPortfolioChange(
   if (!services) throw new Error('Firestore has not been initialized');
   const initializedServices = services;
   let stateEnvelope: PortfolioEnvelope | null = null;
-  let entries: { mf: Record<string, SIPFund>; timestamps: Record<string, string> } = { mf: {}, timestamps: {} };
+  const entriesByRevision = new Map<number | undefined, { mf: Record<string, SIPFund>; timestamps: Record<string, string> }>();
   const emit = (): void => {
-    if (stateEnvelope) callback(attachMfEntries(stateEnvelope, entries));
+    if (stateEnvelope) {
+      const visibleEntries = entriesByRevision.get(stateEnvelope.revision) ?? { mf: {}, timestamps: {} };
+      callback(attachMfEntries(stateEnvelope, visibleEntries));
+    }
   };
   const stateUnsubscribe = onSnapshot(
     portfolioRef(initializedServices.db, uid),
@@ -174,15 +225,17 @@ export function onPortfolioChange(
     holdingsRef(initializedServices.db, uid),
     (snapshot) => {
       try {
-        const mf: Record<string, SIPFund> = {};
-        const timestamps: Record<string, string> = {};
+        const groupedEntries = new Map<number | undefined, { mf: Record<string, SIPFund>; timestamps: Record<string, string> }>();
         for (const holding of snapshot.docs) {
           const value = holding.data();
           if (!isStoredMfEntry(value)) throw new Error(`Firestore holding document ${holding.id} has an invalid entry`);
-          mf[holding.id] = value.value;
-          timestamps[holding.id] = value.updatedAt;
+          const entries = groupedEntries.get(value.revision) ?? { mf: {}, timestamps: {} };
+          entries.mf[holding.id] = value.value;
+          entries.timestamps[holding.id] = value.updatedAt;
+          groupedEntries.set(value.revision, entries);
         }
-        entries = { mf, timestamps };
+        entriesByRevision.clear();
+        groupedEntries.forEach((entries, revision) => entriesByRevision.set(revision, entries));
         emit();
       } catch (error) {
         onError?.(error instanceof Error ? error : new Error('Firestore holding snapshot is invalid'));

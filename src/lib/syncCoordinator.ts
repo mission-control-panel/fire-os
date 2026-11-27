@@ -111,7 +111,7 @@ export class SyncCoordinator {
       .catch((error: unknown) => {
         if (generation === this.generation) {
           this.pending = envelope;
-          this.setStatus('error');
+          this.setStatus(isSyncConflictError(error) ? 'conflict' : 'error');
         }
         throw error;
       })
@@ -188,4 +188,8 @@ function isRetryableSyncError(error: unknown): boolean {
     'network-request-failed',
   ].includes(code)
     || /network|timeout|temporarily unavailable/i.test(error.message);
+}
+
+function isSyncConflictError(error: unknown): boolean {
+  return error instanceof Error && (error as Error & { code?: string }).code === 'conflict';
 }

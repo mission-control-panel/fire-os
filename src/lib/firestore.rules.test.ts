@@ -38,7 +38,10 @@ afterAll(async () => {
 describe('portfolio Firestore rules', () => {
   it('allows an owner to create a valid envelope', async () => {
     const db = testEnvironment.authenticatedContext('owner-1').firestore();
-    await assertSucceeds(setDoc(doc(db, 'users/owner-1/portfolio/state'), validEnvelope));
+    await assertSucceeds(setDoc(doc(db, 'users/owner-1/portfolio/state'), { ...validEnvelope, revision: 1 }));
+    await assertFails(setDoc(doc(db, 'users/owner-1/portfolio/state'), { ...validEnvelope, revision: -1 }));
+    await assertFails(setDoc(doc(db, 'users/owner-1/portfolio/state'), { ...validEnvelope, revision: 1.5 }));
+    await assertFails(setDoc(doc(db, 'users/owner-1/portfolio/state'), { ...validEnvelope, revision: 1000000001 }));
   });
 
   it('allows the production default portfolio envelope', async () => {
@@ -183,6 +186,14 @@ describe('portfolio Firestore rules', () => {
       ...validEnvelope,
       data: { profile: { name: 'x'.repeat(201), age: 30, annualExpenses: 1, fiTarget: 1, monthlyIncome: 1 } },
     }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      data: { profile: { name: { nested: true }, age: 30, annualExpenses: 1, fiTarget: 1, monthlyIncome: 1 } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state'), {
+      ...validEnvelope,
+      lastSavedAt: `2026-01-01T${'x'.repeat(29)}Z`,
+    }));
     await assertFails(setDoc(doc(db, 'users/owner-ranges/portfolio/state/holdings/fund-5'), {
       kind: 'mf',
       value: { name: 'Example Fund', units: 1, startDate: '2026-02-30', monthlyAmount: 1000 },
@@ -294,6 +305,10 @@ describe('portfolio Firestore rules', () => {
     await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
       ...validEnvelope,
       format: { normalizedArrays: true, backupVersion: { nested: true } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
+      ...validEnvelope,
+      format: { normalizedArrays: true, backupVersion: 'x'.repeat(51) },
     }));
     await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
       ...validEnvelope,
