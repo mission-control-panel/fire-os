@@ -24,9 +24,14 @@ test('starts in guest mode and exposes every dashboard section', async ({ page }
   await page.goto('/');
   await expect(page.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page');
   await page.goto('/profile');
-  await expect(page.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('link', { name: 'Profile', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
   await page.goto('/dashboard');
-  await expect(page.getByRole('link', { name: 'Profile' })).not.toHaveAttribute('aria-current');
+  await expect(page.getByRole('link', { name: 'Profile', exact: true })).not.toHaveAttribute(
+    'aria-current',
+  );
 });
 
 test('loads the authenticated portfolio when credentials are provided', async ({ page }) => {

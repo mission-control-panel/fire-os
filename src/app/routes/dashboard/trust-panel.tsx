@@ -6,6 +6,7 @@
  * completeness come from state; the retry calls the shared `refreshStaleData`.
  */
 import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, Card, CardTitle } from '../../ui';
 import { useStore } from '../../hooks/use-store';
 import {
@@ -79,6 +80,92 @@ function TrustRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function TrustSummary({
+  staleCount,
+  completeness,
+  market,
+  valuationNeedsAttention,
+  sync,
+  scope,
+}: {
+  staleCount: number;
+  completeness: number;
+  market: MarketRefreshStatus;
+  valuationNeedsAttention: boolean;
+  sync: SyncStatus;
+  scope: ActiveScopeStatus;
+}) {
+  const syncNeedsAttention = scope === 'cloud' && sync !== 'idle';
+  const summary = staleCount > 0
+    ? {
+        title: 'Refresh needed',
+        detail: 'Some valuations are stale, so totals may change after refresh.',
+        className: 'border-(--color-warning) bg-(--color-surface-raised)',
+      }
+    : valuationNeedsAttention
+      ? {
+          title: 'Valuation coverage incomplete',
+          detail: 'Some holdings have missing or zero valuations, so totals may be understated.',
+          className: 'border-(--color-warning) bg-(--color-surface-raised)',
+        }
+    : market === 'error'
+      ? {
+          title: 'Market refresh failed',
+          detail: 'A market refresh failed; review valuation coverage before relying on totals.',
+          className: 'border-(--color-warning) bg-(--color-surface-raised)',
+        }
+      : syncNeedsAttention
+        ? {
+            title: 'Sync needs attention',
+            detail: sync === 'offline' ? 'Cloud sync is offline; local changes remain on this device.' : `Cloud sync status: ${SYNC_STATUS_LABELS[sync]}.`,
+            className: 'border-(--color-warning) bg-(--color-surface-raised)',
+          }
+      : completeness < 100
+        ? {
+            title: 'Complete your profile',
+            detail: 'Add the missing assumptions and holdings to improve dashboard estimates.',
+            className: 'border-(--color-border) bg-(--color-surface-raised)',
+          }
+        : {
+            title: 'Data is ready to review',
+            detail: 'The dashboard is using the current saved portfolio inputs.',
+            className: 'border-(--color-accent) bg-(--color-surface-raised)',
+          };
+
+  return (
+    <div
+      id="data-trust-summary"
+      role="status"
+      className={`flex flex-wrap items-center justify-between gap-3 rounded-md border p-3 ${summary.className}`}
+    >
+      <div>
+        <p className="font-semibold text-(--color-foreground)">{summary.title}</p>
+        <p className="text-sm text-(--color-muted-foreground)">{summary.detail}</p>
+      </div>
+      {completeness < 100 ? (
+        <Link
+          id="data-trust-profile-link"
+          to="/profile"
+          className="text-sm font-semibold text-(--color-primary) underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-ring)"
+        >
+          Open Profile
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+/** Zero NAVs only reduce trust when a fund has units that need pricing. */
+export function hasUncertainFundValuation(
+  state: FireOSState,
+  valuation: ReturnType<typeof totalNetWorth>['valuation'],
+): boolean {
+  const hasZeroValuation = [...Object.values(state.sip || {}), ...Object.values(state.mf || {})].some(
+    (fund) => fund.units > 0 && Boolean(fund.schemeCode) && state.nav[fund.schemeCode ?? '']?.nav === 0,
+  );
+  return valuation.hasUnknownValues || hasZeroValuation;
+}
+
 export function DataTrustPanel({ state }: { state: FireOSState }) {
   const sync = useStore(syncStatusStore);
   const market = useStore(marketRefreshStatusStore);
@@ -88,11 +175,14 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
   const staleLabels = staleSourceLabels(state);
   const staleCount = staleLabels.length;
   const completeness = profileCompletenessPercent(state);
+  const valuation = totalNetWorth(state).valuation;
+  const valuationNeedsAttention = hasUncertainFundValuation(state, valuation);
   const savedLabel = state._lastSavedAt
     ? `Last saved ${new Date(state._lastSavedAt).toLocaleString()}`
     : 'Not saved yet';
   const shownLabels = staleLabels.slice(0, 5).join(', ');
   const overflow = staleLabels.length > 5 ? ` +${staleLabels.length - 5} more` : '';
+  const valuationRefreshNeeded = staleCount > 0 || valuationNeedsAttention;
   const { liabilities } = totalNetWorth(state);
 
   const onRefresh = () => {
@@ -104,13 +194,29 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
     <section aria-label="Data quality and sync status">
       <Card className="flex flex-col gap-2">
         <CardTitle>Data quality</CardTitle>
+        <TrustSummary
+          staleCount={staleCount}
+          completeness={completeness}
+          market={market}
+          valuationNeedsAttention={valuationNeedsAttention}
+          sync={sync}
+          scope={scope}
+        />
         <TrustRow label="Quality">
-          {staleCount === 0 ? 'Current' : `${staleCount} stale source${staleCount === 1 ? '' : 's'}`}
+          {staleCount > 0
+            ? `${staleCount} stale source${staleCount === 1 ? '' : 's'}`
+            : valuationNeedsAttention
+              ? 'Incomplete valuation coverage'
+              : market === 'error'
+                ? 'Refresh failed'
+                : 'Current'}
         </TrustRow>
-        {staleCount > 0 ? (
+        {valuationRefreshNeeded ? (
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm text-(--color-muted-foreground)" title="Refresh to update these values">
-              {`Stale: ${shownLabels}${overflow}`}
+              {staleCount > 0
+                ? `Stale: ${shownLabels}${overflow}`
+                : 'Valuation coverage needs refresh'}
             </span>
             <Button
               id="data-trust-refresh-btn"
@@ -138,6 +244,19 @@ export function DataTrustPanel({ state }: { state: FireOSState }) {
         <TrustRow label="Completeness">
           {`${completeness}% • Liabilities ${formatCurrency(liabilities, 0)}`}
         </TrustRow>
+        <div
+          role="progressbar"
+          aria-label="Profile completeness"
+          aria-valuenow={completeness}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="h-2 w-full overflow-hidden rounded-full bg-(--color-muted)"
+        >
+          <div
+            className="h-full rounded-full bg-(--color-accent) transition-[width] duration-300 motion-reduce:transition-none"
+            style={{ width: `${completeness}%` }}
+          />
+        </div>
       </Card>
     </section>
   );

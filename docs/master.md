@@ -265,7 +265,9 @@ with a default of 0 when not set. Read [UI](ui.md) for tab-level logic and addit
   distinct series — persisted daily net-worth snapshots (sparse, never
   backfilled or interpolated, downsampled above 500 points) and fetched Nifty
   market history (benchmark only, always labeled with provider, freshness and
-  span). Charts are React
+  span). The data-trust panel summarizes stale valuations, market refresh
+  failures and profile completeness, with an accessible progress indicator and
+  a Profile next-step link. Charts are React
   components on the existing **Recharts** dependency (the legacy `chart.js`
   dependency and module CSS were removed); pure series/range/downsample logic
   lives in `chart-data.ts`, and the route refreshes NAVs/FX and benchmark

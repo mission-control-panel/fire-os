@@ -360,7 +360,12 @@ subscription and cleanup. Its labels are honest about the active scope: in
 local-only mode an idle coordinator reads "Local-only (not cloud synced)" rather
 than "Synced", and the market-data row only shows "Up to date" after a refresh
 that actually fetched a NAV — a refresh with nothing to fetch stays "Not
-refreshed yet". `crashAlertStore` is not cleared by
+refreshed yet". The panel also exposes a `data-trust-summary` status with the
+highest-priority next step: stale or incomplete valuations request a refresh,
+market errors are called out without hiding portfolio totals, and incomplete
+profiles link to Profile. `Profile completeness` is exposed as an accessible
+progress bar.
+`crashAlertStore` is not cleared by
 `resetScopeStatuses`; the Nifty monitor owns its value.
 
 Ownership is unchanged: these stores are ephemeral UI signals only — durable
