@@ -101,8 +101,9 @@ export function GoalsRoute() {
 
   const handleDelete = (id: string) => {
     const next = goals.filter((g) => g.id !== id);
-    setGoals(next);
     appState.goals = next;
+    persistPortfolioState(appState, { sync: false });
+    setGoals(next);
   };
 
   return (

@@ -27,4 +27,12 @@ describe('financial health assessment', () => {
     expect(assessment.dimensions.savingsRate).toBe('yellow');
     expect(assessment.details).toContain('Add essential monthly expenses to calculate savings rate.');
   });
+
+  it('does not call a configured FI target on track with an empty corpus', () => {
+    const state = initializeState();
+    state.profile.fiTarget = 50_000_000;
+    const assessment = assessHealth(state);
+    expect(assessment.dimensions.fiProgress).toBe('yellow');
+    expect(assessment.details).toContain('FI progress has not started yet; add a savings plan or review your target.');
+  });
 });
