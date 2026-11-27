@@ -321,6 +321,12 @@ INR. Value = quantity × quote ×
 INR rate. There is no manual holding valuation path: a failed quote or missing
 FX rate renders as unavailable. Stock quote freshness is 15 minutes.
 
+The Scenario Compare panel includes a Scenario Lab preview for inflation. The
+supporting pure module also provides deterministic debt-payoff, FD-ladder,
+rent-versus-buy and salary-growth calculations plus seeded market-stress and
+withdrawal-sequence paths and isolated scenario CRUD. These are read-only
+estimates with explicit assumptions and never mutate holdings or transactions.
+
 ### Assistant — `src/modules/assistant/`
 
 Chat, privacy context, write consent, proposal diffs, reauthentication, audit

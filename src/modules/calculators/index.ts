@@ -11,6 +11,7 @@ import { calculateMonthlyWithdrawal, recordMonthlyWithdrawal, DEFAULT_FUND_BUCKE
 import { compareFIScenarios, type FIScenarioInput, type FIScenarioResult } from './scenario-modeler';
 import { sipPauseImpact } from '../../lib/calculations';
 import { analyzeCrashProtocol, portfolioSafetyReport } from '../financial-safety/safety-engine';
+import { projectInflation } from './scenario-lab';
 
 let activeContext = createFeatureContext();
 let D = activeContext.state;
@@ -274,6 +275,14 @@ function attachCalculatorHandlers(context: FeatureContext) {
 
   // Scenario Compare (read-only projection, never saves state)
   document.getElementById('compare-scenarios-btn')?.addEventListener('click', () => runScenarioCompare(context));
+  document.getElementById('scenario-lab-inflation-btn')?.addEventListener('click', () => {
+    const amount = parseFloat((document.getElementById('scenario-lab-amount') as HTMLInputElement).value);
+    const rate = parseFloat((document.getElementById('scenario-lab-rate') as HTMLInputElement).value);
+    const years = parseFloat((document.getElementById('scenario-lab-years') as HTMLInputElement).value);
+    const result = projectInflation(amount, rate, years);
+    const output = document.getElementById('scenario-lab-inflation-result');
+    if (output) output.textContent = result === null ? 'Unavailable: check assumptions.' : `Inflation-adjusted value: ${formatCurrency(result)}`;
+  });
   document.getElementById('copy-scenario-a-btn')?.addEventListener('click', () => {
     copyScenarioInputs('a', 'b');
     announceScenarioStatus('Scenario A copied to Scenario B.');
@@ -574,6 +583,17 @@ function renderScenarioCompare(context: FeatureContext): string {
 
       <div id="compare-result" class="calc-result" aria-live="polite">
         <p class="calc-info" style="margin-bottom: 0;" aria-live="polite">Enter assumptions and press Compare Scenarios to see projections.</p>
+      </div>
+      <div class="scenario-lab-mini">
+        <h4>Scenario Lab preview</h4>
+        <p class="calc-info">Deterministic calculators are isolated and read-only; outputs are estimates, not guarantees.</p>
+        <div class="compare-assumptions">
+          <label>Amount<input id="scenario-lab-amount" type="number" min="0" value="100000"></label>
+          <label>Annual inflation %<input id="scenario-lab-rate" type="number" min="-100" value="6"></label>
+          <label>Years<input id="scenario-lab-years" type="number" min="0" value="10"></label>
+        </div>
+        <button id="scenario-lab-inflation-btn" class="btn btn-secondary">Project inflation</button>
+        <p id="scenario-lab-inflation-result" class="calc-info" aria-live="polite">Enter assumptions and run a preview.</p>
       </div>
     </div>
   `;

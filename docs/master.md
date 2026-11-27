@@ -291,7 +291,10 @@ with a default of 0 when not set. Read [UI](ui.md) for tab-level logic and addit
   and conditional SWP and expense widgets.
 - **Planning Tools** (`src/modules/calculators/`): crash protocol, emergency
   runway, SIP pause, LTCG tax planner, SWP scheduler, allocation rebalancing and
-  side-by-side scenario comparison.
+  side-by-side scenario comparison. The isolated Scenario Lab adds bounded
+  deterministic inflation, debt-payoff, FD-ladder, rent-versus-buy,
+  salary-growth and seeded market-stress/withdrawal calculations; it never
+  mutates portfolio state.
 - **Insurance** (`src/modules/insurance/`): term and health cover data plus
   provider/expiry metadata and optional employer/personal policy records.
   Active-policy aggregation, renewal/expiry states and assumption-based gaps
