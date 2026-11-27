@@ -31,7 +31,7 @@ export function assessHealth(state: FireOSState): HealthAssessment {
        fiStatus = 'yellow';
        fiDetail = 'FI progress is low, consider reviewing growth rate.';
     }
-  } else if (fi.fiTarget === 0) {
+  } else if (fi.fiTarget === null || fi.fiTarget === 0) {
     fiStatus = 'yellow';
     fiDetail = 'FI target is not configured.';
   }

@@ -35,4 +35,12 @@ describe('financial health assessment', () => {
     expect(assessment.dimensions.fiProgress).toBe('yellow');
     expect(assessment.details).toContain('FI progress has not started yet; add a savings plan or review your target.');
   });
+
+  it('keeps a missing FI target actionable for legacy null profiles', () => {
+    const state = initializeState();
+    state.profile.fiTarget = null;
+    const assessment = assessHealth(state);
+    expect(assessment.dimensions.fiProgress).toBe('yellow');
+    expect(assessment.details).toContain('FI target is not configured.');
+  });
 });

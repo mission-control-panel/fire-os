@@ -34,7 +34,10 @@ function validMonth(value: string): boolean {
 }
 
 export function annualInflationRate(inflation: GoalInflation): number {
-  const rate = typeof inflation === 'number' ? inflation > 1 ? inflation / 100 : inflation : INFLATION_RATES[inflation];
+  // Numeric values are percentage points for legacy compatibility (8 = 8%).
+  // Decimal fractions below 1 remain accepted (0.01 = 1%); 1 is the
+  // unambiguous one-percent boundary rather than an accidental 100% rate.
+  const rate = typeof inflation === 'number' ? inflation > 1 ? inflation / 100 : inflation === 1 ? 0.01 : inflation : INFLATION_RATES[inflation];
   return Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : NaN;
 }
 
@@ -86,6 +89,7 @@ export function allocateGoalAssets(goals: readonly Goal[], assetValues: Record<s
   const owners = new Map<string, Goal>();
   const duplicateAssetIds = new Set<string>();
   const invalidAssetIds = new Set<string>();
+  const invalidGoals = new Set<string>();
   const assetIds = Object.keys(assetValues);
   const canonicalAssetId = (assetId: string): string => {
     const prefix = assetId.split(':', 1)[0];
@@ -96,6 +100,7 @@ export function allocateGoalAssets(goals: readonly Goal[], assetValues: Record<s
   const ordered = [...goals].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   for (const goal of ordered) {
     for (const rawAssetId of goal.linkedAssetIds) {
+      if (invalidGoals.has(goal.id)) continue;
       const assetId = canonicalAssetId(rawAssetId);
       const previous = owners.get(assetId);
       if (previous) {
@@ -109,6 +114,7 @@ export function allocateGoalAssets(goals: readonly Goal[], assetValues: Record<s
         if (!Number.isFinite(nextTotal) || nextTotal > MAX_PLANNING_AMOUNT) {
           allocatedByGoal[goal.id] = 0;
           invalidAssetIds.add(rawAssetId);
+          invalidGoals.add(goal.id);
         } else {
           allocatedByGoal[goal.id] = nextTotal;
         }

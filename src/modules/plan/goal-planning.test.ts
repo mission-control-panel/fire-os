@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allocateGoalAssets, planGoal } from './goal-planning';
+import { allocateGoalAssets, annualInflationRate, planGoal } from './goal-planning';
 import type { Goal } from '../../types/state';
 
 const goal = (overrides: Partial<Goal> = {}): Goal => ({
@@ -8,6 +8,12 @@ const goal = (overrides: Partial<Goal> = {}): Goal => ({
 });
 
 describe('goal planning', () => {
+  it('documents compatible numeric inflation units at percentage boundaries', () => {
+    expect(annualInflationRate(1)).toBeCloseTo(0.01);
+    expect(annualInflationRate(0.01)).toBeCloseTo(0.01);
+    expect(annualInflationRate(8)).toBeCloseTo(0.08);
+  });
+
   it('inflates a target and calculates a transparent monthly shortfall', () => {
     const plan = planGoal(goal(), { today: new Date('2026-01-01T00:00:00Z'), annualReturnRate: 0 });
     expect(plan.targetAtDate).toBeCloseTo(1_000_000 * 1.06 ** 4);
@@ -66,8 +72,8 @@ describe('goal planning', () => {
     expect(result.invalidAssetIds).toEqual([]);
 
     const overflow = allocateGoalAssets([
-      goal({ id: 'overflow', linkedAssetIds: ['a', 'b'] }),
-    ], { a: Number.MAX_SAFE_INTEGER, b: 1 });
+      goal({ id: 'overflow', linkedAssetIds: ['a', 'b', 'c'] }),
+    ], { a: Number.MAX_SAFE_INTEGER, b: 1, c: 1 });
     expect(overflow.allocatedByGoal.overflow).toBe(0);
     expect(overflow.invalidAssetIds).toEqual(['b']);
   });
