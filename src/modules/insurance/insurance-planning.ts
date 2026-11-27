@@ -47,7 +47,7 @@ export function policyLifecycle(policy: InsurancePolicy, options: { today?: Date
   const today = options.today ?? new Date();
   const renewalWindowDays = options.renewalWindowDays ?? 60;
   if (!policy.expiryDate) return { policy, status: 'no-expiry', daysRemaining: null };
-  const expiry = Date.parse(policy.expiryDate);
+  const expiry = parseExpiry(policy.expiryDate);
   if (!Number.isFinite(expiry)) return { policy, status: 'unknown', daysRemaining: null };
   const daysRemaining = Math.ceil((expiry - today.getTime()) / DAY_MS);
   if (daysRemaining < 0) return { policy, status: 'expired', daysRemaining };
@@ -158,6 +158,14 @@ export function goalShortfallForInsurance(state: FireOSState): number | null {
 }
 
 function isActiveExpiry(expiryDate: string, today = new Date()): boolean {
-  const expiry = Date.parse(expiryDate);
+  const expiry = parseExpiry(expiryDate);
   return Number.isFinite(expiry) && expiry >= today.getTime();
+}
+
+function parseExpiry(expiryDate: string): number {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) {
+    const [year, month, day] = expiryDate.split('-').map(Number);
+    return new Date(year, month - 1, day, 23, 59, 59, 999).getTime();
+  }
+  return Date.parse(expiryDate);
 }

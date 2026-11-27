@@ -14,7 +14,8 @@ describe('insurance planning', () => {
     const today = new Date('2026-01-01T00:00:00Z');
     expect(policyLifecycle(policy(), { today, renewalWindowDays: 60 }).status).toBe('active');
     expect(policyLifecycle(policy({ expiryDate: '2026-02-15' }), { today, renewalWindowDays: 60 }).status).toBe('expiring-soon');
-    expect(policyLifecycle(policy({ expiryDate: '2025-12-31' }), { today }).status).toBe('expired');
+    expect(policyLifecycle(policy({ expiryDate: '2025-12-31' }), { today: new Date('2026-01-02T00:00:00Z') }).status).toBe('expired');
+    expect(policyLifecycle(policy({ expiryDate: '2026-01-01' }), { today: new Date('2026-01-01T12:00:00+05:30') }).status).toBe('expiring-soon');
     expect(policyLifecycle(policy({ expiryDate: 'not-a-date' }), { today }).status).toBe('unknown');
   });
 
