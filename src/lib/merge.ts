@@ -121,6 +121,7 @@ export function mergeEnvelopes(local: PortfolioEnvelope, remote: PortfolioEnvelo
   return {
     envelope: {
       ...remote,
+      revision: Math.max(local.revision ?? 0, remote.revision ?? 0),
       data,
       sectionUpdatedAt,
       entryUpdatedAt: { ...remote.entryUpdatedAt, ...local.entryUpdatedAt },
@@ -141,17 +142,20 @@ export function buildEnvelopeFromState(
   void _syncMetadata;
   void _lastSavedAt;
   const sectionUpdatedAt: PortfolioEnvelope['sectionUpdatedAt'] = {};
+  let changed = previous === undefined;
   (Object.keys(SECTION_FIELDS) as PortfolioSection[]).forEach((section) => {
-    const changed = SECTION_FIELDS[section].some((key) =>
+    const sectionChanged = SECTION_FIELDS[section].some((key) =>
       JSON.stringify(previous?.data[key]) !== JSON.stringify(data[key]),
     );
-    sectionUpdatedAt[section] = changed
+    if (sectionChanged) changed = true;
+    sectionUpdatedAt[section] = sectionChanged
       ? now
       : previous?.sectionUpdatedAt?.[section] ?? now;
   });
 
   return {
     schemaVersion: 'fireOS_v5',
+    revision: previous ? (changed ? (previous.revision ?? 0) + 1 : previous.revision ?? 0) : 1,
     lastSavedAt: now,
     client,
     data,

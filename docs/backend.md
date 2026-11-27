@@ -78,12 +78,22 @@ Canonical path:
 /users/{uid}/portfolio/state/holdings/{holdingId}
 ```
 
-The canonical envelope contains schemaVersion, lastSavedAt, optional client,
+The canonical envelope contains schemaVersion, optional monotonic `revision`,
+lastSavedAt, optional client (including an idempotent `lastWriteId`),
 serverMetadata, `data`, sectionUpdatedAt, entryUpdatedAt, migration, format.
 `data` holds validated persisted sections (excluding `mf` when split). MF docs
-are `{ kind: 'mf', value: SIPFund, updatedAt }`; client reconstructs `data.mf`
+are `{ kind: 'mf', value: SIPFund, updatedAt, revision }`; client reconstructs `data.mf`
 and holding timestamps on read. Save writes state document, then reconciles
-holding docs (delete removed IDs, set current entries). `deletePortfolio()`
+holding docs (delete removed IDs, set current entries). Saves reserve the state
+revision in a Firestore transaction, reject stale revisions, and reconcile the
+known MF child document references in that same transaction. Child documents
+carry the committed state revision; reads ignore unrevisioned or stale child
+documents once a revisioned state exists, preventing an out-of-band child from
+being reattached to a newer canonical state. The Firebase SDK
+does not support a collection query inside a transaction, so the current child
+set is discovered immediately before the transaction and each known reference
+is read transactionally; concurrent changes cause the transaction to retry.
+`deletePortfolio()`
 removes child holdings and state. Rules permit only authenticated owner reads,
 writes and deletes; state and MF shapes have allowlists, bounded strings/maps,
 lists and schema versions. The Firestore source is `firestore.rules`.

@@ -207,7 +207,9 @@ export class AuthSessionController {
               state._lastSavedAt,
               portfolioSession.currentEnvelope ?? undefined,
             );
-            const mergedSnapshot = mergeEnvelopes(current, remote).envelope;
+            const mergedResult = mergeEnvelopes(current, remote);
+            if (mergedResult.conflicts.length > 0) syncStatusStore.set('conflict');
+            const mergedSnapshot = mergedResult.envelope;
             applyEnvelopeToState(state, mergedSnapshot);
             state.currentUser = user;
             portfolioSession.setEnvelope(mergedSnapshot);

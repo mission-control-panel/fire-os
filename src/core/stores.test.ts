@@ -209,6 +209,24 @@ describe('sync status signal', () => {
     coordinator.dispose();
   });
 
+  it('publishes conflict when a stale revision is rejected', async () => {
+    const conflict = Object.assign(new Error('stale revision'), { code: 'conflict' });
+    const coordinator = new SyncCoordinator({
+      uid: 'user-1',
+      save: vi.fn().mockRejectedValue(conflict),
+      debounceMs: 60_000,
+      maxRetries: 0,
+      initialOnline: true,
+      onStatusChange: (status) => syncStatusStore.set(status),
+    });
+    coordinator.markDirty(createEnvelope());
+
+    await coordinator.flush().catch(() => undefined);
+
+    expect(syncStatusStore.get()).toBe('conflict');
+    coordinator.dispose();
+  });
+
   it('wires coordinator status through the store in the auth session controller', () => {
     const controller = readSource('../app/auth-session-controller.ts');
     expect(controller).toContain('syncStatusStore.set(status)');

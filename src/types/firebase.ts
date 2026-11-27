@@ -96,6 +96,8 @@ export interface PortfolioMigrationMetadata {
 /** Canonical document stored at /users/{uid}/portfolio/state. */
 export interface PortfolioEnvelope {
   schemaVersion: SchemaVersion;
+  /** Monotonic per-user write revision; absent only on legacy envelopes. */
+  revision?: number;
   lastSavedAt: string;
   client?: ClientMetadata & { lastWriteId?: string };
   serverMetadata?: {
@@ -148,6 +150,12 @@ export function isPortfolioEnvelope(value: unknown): value is PortfolioEnvelope 
   if (!isRecord(value)) return false;
   if (value.schemaVersion !== 'fireOS_v2' && value.schemaVersion !== 'fireOS_v3' && value.schemaVersion !== 'fireOS_v4' && value.schemaVersion !== 'fireOS_v5') return false;
   if (!isIsoTimestamp(value.lastSavedAt) || !isRecord(value.data)) return false;
+  if (value.revision !== undefined) {
+    if (typeof value.revision !== 'number'
+      || !Number.isSafeInteger(value.revision)
+      || value.revision < 0
+      || value.revision > 1_000_000_000) return false;
+  }
 
   const data = value.data;
   if ('currentUser' in data || '_syncMetadata' in data || '_lastSavedAt' in data) return false;
