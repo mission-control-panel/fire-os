@@ -367,11 +367,12 @@ client validator tests when changing schema. The rules also require the profile'
 core keys and numeric field types, reject out-of-range ages and financial-year
 targets/expenses, reject negative or implausibly large MF units, monthly
 amounts and cost bases, and require MF `startDate` values in the supported
-`YYYY-MM` or `YYYY-MM-DD` forms. The optional `format` envelope remains
-allowlisted for backward compatibility and is validated by the client schema;
-invoking its full rules predicate together with the expanded profile predicate
-currently exceeds Firestore's per-request expression budget and is tracked as
-follow-up rules refactoring.
+`YYYY-MM` or `YYYY-MM-DD` forms. The optional `format` envelope is also
+server-validated: it must contain only `normalizedArrays` (boolean) and
+`backupVersion` (a bounded string). Several redundant map-cardinality checks
+are intentionally omitted because exact key allowlists already enforce the
+same bounds and keep the complete rules contract within Firestore's expression
+budget.
 
 ## External service contracts and refresh triggers
 

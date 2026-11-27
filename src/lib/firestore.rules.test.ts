@@ -254,6 +254,26 @@ describe('portfolio Firestore rules', () => {
     }));
   });
 
+  it('validates the optional format envelope at the rules boundary', async () => {
+    const db = testEnvironment.authenticatedContext('owner-format').firestore();
+    await assertSucceeds(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
+      ...validEnvelope,
+      format: { normalizedArrays: true, backupVersion: 'fireOS-backup-v1' },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
+      ...validEnvelope,
+      format: { normalizedArrays: 'yes', backupVersion: 'fireOS-backup-v1' },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
+      ...validEnvelope,
+      format: { normalizedArrays: true, backupVersion: 'fireOS-backup-v1', extra: true },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-format/portfolio/state'), {
+      ...validEnvelope,
+      format: 'legacy-format',
+    }));
+  });
+
   it('denies oversized persisted arrays', async () => {
     const db = testEnvironment.authenticatedContext('owner-7').firestore();
     await assertFails(setDoc(doc(db, 'users/owner-7/portfolio/state'), {

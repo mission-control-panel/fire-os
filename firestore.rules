@@ -25,8 +25,7 @@ service cloud.firestore {
     }
 
     function validProfile(value) {
-      return value is map
-        && value.size() == 5 + (('dateOfBirth' in value) ? 1 : 0) + (('taxSlabRate' in value) ? 1 : 0)
+      return value.keys().hasOnly(['name', 'dateOfBirth', 'age', 'taxSlabRate', 'annualExpenses', 'fiTarget', 'monthlyIncome'])
         && value.keys().hasAll(['name', 'age', 'annualExpenses', 'fiTarget', 'monthlyIncome'])
         && value.name is string
         && value.age is number && value.age >= 0 && value.age <= 150
@@ -41,7 +40,6 @@ service cloud.firestore {
       return value is map
         && value.keys().hasOnly(['level', 'high52w', 'timestamp', 'source', 'status'])
         && value.keys().hasAll(['level', 'high52w', 'timestamp', 'source'])
-        && value.size() <= 4
         && value.level is number
         && value.high52w is number
         && isIso(value.timestamp)
@@ -53,7 +51,6 @@ service cloud.firestore {
       return value is map
         && value.keys().hasOnly(['rate', 'timestamp'])
         && value.keys().hasAll(['rate', 'timestamp'])
-        && value.size() <= 2
         && value.rate is number
         && isIso(value.timestamp);
     }
@@ -76,7 +73,6 @@ function validWatchdogRules(value) {
       return value is map
         && value.keys().hasOnly(['enabled', 'startDate', 'monthlyAmount', 'rate'])
         && value.keys().hasAll(['enabled', 'startDate', 'monthlyAmount', 'rate'])
-        && value.size() <= 4
         && value.enabled is bool
         && isBoundedString(value.startDate, 20)
         && value.monthlyAmount is number
@@ -87,7 +83,6 @@ function validWatchdogRules(value) {
       return value is map
         && value.keys().hasOnly(['lastLTCGHarvestDate', 'lastHarvestedAmount', 'harvestTarget'])
         && value.keys().hasAll(['lastLTCGHarvestDate', 'lastHarvestedAmount', 'harvestTarget'])
-        && value.size() <= 3
         && isBoundedString(value.lastLTCGHarvestDate, 40)
         && value.lastHarvestedAmount is number
         && value.harvestTarget is number;
@@ -97,7 +92,6 @@ function validWatchdogRules(value) {
       return value is map
         && value.keys().hasOnly(['termLife', 'health', 'vehicle'])
         && value.keys().hasAll(['termLife', 'health', 'vehicle'])
-        && value.size() <= 3
         && value.termLife is map
         && value.termLife.keys().hasOnly(['currentCover', 'annualPremium', 'expiryDate', 'provider'])
         && value.termLife.keys().hasAll(['currentCover', 'annualPremium', 'expiryDate', 'provider'])
@@ -123,7 +117,6 @@ function validWatchdogRules(value) {
       return value is map
         && value.keys().hasOnly(['shares', 'holdings', 'grantPrice', 'liquidationShares', 'vestingFmv', 'currentPrice', 'slabRate', 'vestingSchedule', 'holdingPeriodYears'])
         && value.keys().hasAll(['shares', 'grantPrice', 'vestingSchedule'])
-        && value.size() <= 9
         && value.shares is number
         && (!('holdings' in value) || (value.holdings is list && value.holdings.size() <= 20))
         && value.grantPrice is number
@@ -143,7 +136,6 @@ function validWatchdogRules(value) {
       return value is map
         && value.keys().hasOnly(['name', 'schemeCode', 'units', 'startDate', 'monthlyAmount', 'costBasis', 'bucketId'])
         && value.keys().hasAll(['name', 'units', 'startDate', 'monthlyAmount'])
-        && value.size() <= 7
         && isBoundedString(value.name, 200)
         && (!('schemeCode' in value) || isBoundedString(value.schemeCode, 50))
         && value.units is number && value.units >= 0 && value.units <= 1000000000000
@@ -165,7 +157,6 @@ function validWatchdogRules(value) {
       return !('client' in request.resource.data)
         || (request.resource.data.client is map
           && request.resource.data.client.keys().hasOnly(['clientId', 'appVersion', 'platform', 'userAgent', 'lastWriteId'])
-          && request.resource.data.client.size() <= 5
           && (!('clientId' in request.resource.data.client) || isBoundedString(request.resource.data.client.clientId, 100))
           && (!('appVersion' in request.resource.data.client) || isBoundedString(request.resource.data.client.appVersion, 50))
           && (!('platform' in request.resource.data.client) || request.resource.data.client.platform in ['web', 'mobile'])
@@ -177,7 +168,6 @@ function validWatchdogRules(value) {
       return !('sectionUpdatedAt' in request.resource.data)
         || (request.resource.data.sectionUpdatedAt is map
           && request.resource.data.sectionUpdatedAt.keys().hasOnly(['profile', 'holdings', 'planning', 'insurance', 'esop', 'cache'])
-          && request.resource.data.sectionUpdatedAt.size() <= 6
           && (!('profile' in request.resource.data.sectionUpdatedAt) || isIso(request.resource.data.sectionUpdatedAt.profile))
           && (!('holdings' in request.resource.data.sectionUpdatedAt) || isIso(request.resource.data.sectionUpdatedAt.holdings))
           && (!('planning' in request.resource.data.sectionUpdatedAt) || isIso(request.resource.data.sectionUpdatedAt.planning))
@@ -214,7 +204,6 @@ function validWatchdogRules(value) {
       return !('serverMetadata' in request.resource.data)
         || (request.resource.data.serverMetadata is map
           && request.resource.data.serverMetadata.keys().hasOnly(['savedBy', 'savedAt'])
-          && request.resource.data.serverMetadata.size() <= 2
           && (!('savedBy' in request.resource.data.serverMetadata) || isBoundedString(request.resource.data.serverMetadata.savedBy, 128))
           && (!('savedAt' in request.resource.data.serverMetadata) || isIso(request.resource.data.serverMetadata.savedAt)));
     }
@@ -223,7 +212,6 @@ function validWatchdogRules(value) {
       return !('entryUpdatedAt' in request.resource.data)
         || (request.resource.data.entryUpdatedAt is map
           && request.resource.data.entryUpdatedAt.keys().hasOnly(['holdings'])
-          && request.resource.data.entryUpdatedAt.size() <= 1
           && (!('holdings' in request.resource.data.entryUpdatedAt)
             || isBoundedMap(request.resource.data.entryUpdatedAt.holdings, 200)));
     }
@@ -233,7 +221,6 @@ function validWatchdogRules(value) {
         || (request.resource.data.migration is map
           && request.resource.data.migration.keys().hasOnly(['source', 'completedAt', 'sourceVersion'])
           && request.resource.data.migration.keys().hasAll(['source', 'completedAt', 'sourceVersion'])
-          && request.resource.data.migration.size() <= 3
           && request.resource.data.migration.source in ['localStorage', 'json']
           && isIso(request.resource.data.migration.completedAt)
           && isBoundedString(request.resource.data.migration.sourceVersion, 50));
@@ -241,9 +228,9 @@ function validWatchdogRules(value) {
 
     function validFormat() {
       return !('format' in request.resource.data)
-        || (request.resource.data.format is map
-          && request.resource.data.format.size() == 2
-          );
+        || (request.resource.data.format.keys().hasOnly(['normalizedArrays', 'backupVersion'])
+          && request.resource.data.format.normalizedArrays is bool
+          && isBoundedString(request.resource.data.format.backupVersion, 50));
     }
 
     function validEnvelope() {
@@ -258,7 +245,6 @@ function validWatchdogRules(value) {
         'migration',
         'format'
       ])
-      && request.resource.data.keys().hasAll(['schemaVersion', 'lastSavedAt', 'data'])
       && request.resource.data.schemaVersion is string
       && request.resource.data.schemaVersion in ['fireOS_v2', 'fireOS_v3', 'fireOS_v4', 'fireOS_v5']
       && isIso(request.resource.data.lastSavedAt)
@@ -267,7 +253,8 @@ function validWatchdogRules(value) {
       && validSectionClocks()
       && validServerMetadata()
       && validEntryUpdatedAt()
-      && validMigration();
+      && validMigration()
+      && validFormat();
     }
 
     match /users/{uid}/portfolio/state {
