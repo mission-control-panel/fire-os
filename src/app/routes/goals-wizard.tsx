@@ -54,16 +54,26 @@ export function GoalsRoute() {
   const [creating, setCreating] = useState(false);
 
   const dialogOpen = creating || editing !== null;
-  const assetEntries: Array<[string, number]> = [
-    ...Object.entries(appState.sip).map(([id, fund]) => [id, fund.units * (appState.nav[fund.schemeCode ?? '']?.nav ?? 0)] as [string, number]),
-    ...Object.entries(appState.mf).map(([id, fund]) => [id, fund.units * (appState.nav[fund.schemeCode ?? '']?.nav ?? 0)] as [string, number]),
-    ...Object.entries(appState.fd).map(([id, holding]) => [id, holding.amount] as [string, number]),
-    ...Object.entries(appState.epf).map(([id, holding]) => [id, holding.amount] as [string, number]),
-    ...Object.entries(appState.esop).map(([id, holding]) => [id, holding.amount] as [string, number]),
-    ...Object.entries(appState.bonds).map(([id, holding]) => [id, holding.amount] as [string, number]),
-    ...Object.entries(appState.demat).map(([id, holding]) => [id, holding.currentValue] as [string, number]),
-    ...Object.entries(appState.otherHoldings).map(([id, holding]) => [id, holding.amount] as [string, number]),
-  ].filter(([, value]) => Number.isFinite(value) && value > 0);
+  const assetEntries: Array<[string, number]> = [];
+  const bareAssetValues = new Map<string, number>();
+  const bareAssetCounts = new Map<string, number>();
+  const addAsset = (kind: string, id: string, value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return;
+    assetEntries.push([`${kind}:${id}`, value]);
+    bareAssetValues.set(id, (bareAssetValues.get(id) ?? 0) + value);
+    bareAssetCounts.set(id, (bareAssetCounts.get(id) ?? 0) + 1);
+  };
+  Object.entries(appState.sip).forEach(([id, fund]) => addAsset('sip', id, fund.units * (appState.nav[fund.schemeCode ?? '']?.nav ?? 0)));
+  Object.entries(appState.mf).forEach(([id, fund]) => addAsset('mf', id, fund.units * (appState.nav[fund.schemeCode ?? '']?.nav ?? 0)));
+  Object.entries(appState.fd).forEach(([id, holding]) => addAsset('fd', id, holding.amount));
+  Object.entries(appState.epf).forEach(([id, holding]) => addAsset('epf', id, holding.amount));
+  Object.entries(appState.esop).forEach(([id, holding]) => addAsset('esop', id, holding.amount));
+  Object.entries(appState.bonds).forEach(([id, holding]) => addAsset('bonds', id, holding.amount));
+  Object.entries(appState.demat).forEach(([id, holding]) => addAsset('demat', id, holding.currentValue));
+  Object.entries(appState.otherHoldings).forEach(([id, holding]) => addAsset('other', id, holding.amount));
+  for (const [id, value] of bareAssetValues) {
+    if (bareAssetCounts.get(id) === 1) assetEntries.push([id, value]);
+  }
   const assetValues = Object.fromEntries(assetEntries);
   const allocation = allocateGoalAssets(goals, assetValues);
 
@@ -147,7 +157,8 @@ export function GoalsRoute() {
                 const planningGoal = allocatedValue > 0 ? { ...goal, currentAmount: goal.currentAmount + allocatedValue } : goal;
                 const plan = planGoal(planningGoal);
                 const displayedTarget = plan.targetAtDate || goal.targetToday;
-                const progress = displayedTarget > 0 ? Math.max(0, Math.min(100, (goal.currentAmount / displayedTarget) * 100)) : progressOf(goal);
+                const savedAmount = planningGoal.currentAmount;
+                const progress = displayedTarget > 0 ? Math.max(0, Math.min(100, (savedAmount / displayedTarget) * 100)) : progressOf(goal);
                 const shortfall = plan.status === 'missing-data' ? Math.max(0, goal.targetToday - goal.currentAmount) : plan.shortfallAtDate;
                 const months = plan.status === 'missing-data' ? monthsRemaining(goal.targetDate) : plan.monthsRemaining;
                 const reached = progress >= 100;
@@ -194,7 +205,7 @@ export function GoalsRoute() {
                       <span>{formatCurrency(goal.targetToday)}</span>
                       {displayedTarget !== goal.targetToday ? <span aria-hidden="true" className="block text-xs text-(--color-muted-foreground)">~{formatCurrency(displayedTarget)} at target</span> : null}
                     </TableNumericCell>
-                    <TableNumericCell>{formatCurrency(goal.currentAmount)}</TableNumericCell>
+                    <TableNumericCell>{formatCurrency(savedAmount)}</TableNumericCell>
                     <TableNumericCell>
                       {reached ? (
                         <span className="text-(--color-accent)">Reached</span>
