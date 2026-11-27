@@ -155,6 +155,14 @@ erase a valid cache. The Nifty history series is fetched through the Worker
 `/api/market/nifty` endpoint. `marketHistory` is non-enumerable on state, is never written to
 the cloud envelope, and is mirrored into identity-scoped localStorage on save.
 
+Investment analytics in `src/modules/analytics/investment-analytics.ts` are
+pure, read-only functions over explicitly sourced observations. Currency and
+sector exposure, concentration, fund overlap and expense ratios never infer
+metadata from names; missing fields produce an `insufficient-data` status.
+Volatility and maximum drawdown require at least two ordered, positive dated
+observations and use only the supplied series. These calculations do not fetch
+prices, mutate the portfolio or imply a recommendation or trade.
+
 ## Assistant endpoint
 
 Production Worker is configured in `worker/wrangler.toml`; secret binding is
