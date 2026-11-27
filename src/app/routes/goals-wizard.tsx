@@ -63,8 +63,15 @@ export function GoalsRoute() {
     bareAssetValues.set(id, (bareAssetValues.get(id) ?? 0) + value);
     bareAssetCounts.set(id, (bareAssetCounts.get(id) ?? 0) + 1);
   };
-  Object.entries(appState.sip).forEach(([id, fund]) => addAsset('sip', id, fund.units * (appState.nav[fund.schemeCode ?? '']?.nav ?? 0)));
-  Object.entries(appState.mf).forEach(([id, fund]) => addAsset('mf', id, fund.units * (appState.nav[fund.schemeCode ?? '']?.nav ?? 0)));
+  const currentNavValue = (schemeCode: string | undefined): number => {
+    const nav = schemeCode ? appState.nav[schemeCode] : undefined;
+    if (!nav || !Number.isFinite(nav.nav) || nav.nav <= 0 || nav.status === 'stale') return 0;
+    const timestamp = Date.parse(nav.timestamp);
+    if (!Number.isFinite(timestamp) || timestamp > Date.now() || Date.now() - timestamp > nav.ttl) return 0;
+    return nav.nav;
+  };
+  Object.entries(appState.sip).forEach(([id, fund]) => addAsset('sip', id, fund.units * currentNavValue(fund.schemeCode)));
+  Object.entries(appState.mf).forEach(([id, fund]) => addAsset('mf', id, fund.units * currentNavValue(fund.schemeCode)));
   Object.entries(appState.fd).forEach(([id, holding]) => addAsset('fd', id, holding.amount));
   Object.entries(appState.epf).forEach(([id, holding]) => addAsset('epf', id, holding.amount));
   Object.entries(appState.esop).forEach(([id, holding]) => addAsset('esop', id, holding.amount));
@@ -159,7 +166,7 @@ export function GoalsRoute() {
                 const displayedTarget = plan.targetAtDate || goal.targetToday;
                 const savedAmount = planningGoal.currentAmount;
                 const progress = displayedTarget > 0 ? Math.max(0, Math.min(100, (savedAmount / displayedTarget) * 100)) : progressOf(goal);
-                const shortfall = plan.status === 'missing-data' ? Math.max(0, goal.targetToday - goal.currentAmount) : plan.shortfallAtDate;
+                const shortfall = plan.status === 'missing-data' ? Math.max(0, goal.targetToday - savedAmount) : plan.shortfallAtDate;
                 const months = plan.status === 'missing-data' ? monthsRemaining(goal.targetDate) : plan.monthsRemaining;
                 const reached = progress >= 100;
 

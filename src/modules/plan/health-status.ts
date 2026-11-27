@@ -50,7 +50,7 @@ export function assessHealth(state: FireOSState): HealthAssessment {
 
   let savingsStatus: 'green' | 'yellow' | 'red' = 'green';
   let savingsDetail = 'Savings rate is excellent (>30%).';
-  if (annualIncome > 0) {
+  if (annualIncome > 0 && state.profile.annualExpenses > 0) {
     const annualExpenses = (state.profile.annualExpenses || 0) * 12;
     const savingsRate = (annualIncome - annualExpenses) / annualIncome;
     if (savingsRate < 0.15) {
@@ -62,6 +62,9 @@ export function assessHealth(state: FireOSState): HealthAssessment {
     } else {
       savingsDetail = `Savings rate is healthy at ${Math.round(savingsRate * 100)}%.`;
     }
+  } else if (annualIncome > 0) {
+    savingsStatus = 'yellow';
+    savingsDetail = 'Add essential monthly expenses to calculate savings rate.';
   } else {
     savingsStatus = 'red';
     savingsDetail = 'No income data configured.';
@@ -152,13 +155,13 @@ export function renderHealthStatusBanner(state: FireOSState): string {
 
   return `
     <div class="health-banner health-banner--${assessment.status}">
-      <div class="health-banner-header cursor-pointer" id="health-banner-toggle" style="display:flex; justify-content:space-between; align-items:center;">
+      <button type="button" class="health-banner-header cursor-pointer" id="health-banner-toggle" aria-expanded="false" aria-controls="health-banner-details" style="display:flex; justify-content:space-between; align-items:center; width:100%; text-align:left;">
         <div class="health-banner-title" style="display:flex; align-items:center; gap:0.5rem; font-family:'Fira Code', monospace;">
           ${iconMap[assessment.status]}
           <span>${assessment.headline}</span>
         </div>
         <div class="health-banner-chevron" style="transition: transform 0.3s ease;">▼</div>
-      </div>
+      </button>
       <div class="health-banner-details" id="health-banner-details" style="display: none; margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
         ${detailsHtml}
       </div>
@@ -176,6 +179,7 @@ export function attachHealthBannerListeners(): void {
       const isHidden = details.style.display === 'none';
       details.style.display = isHidden ? 'block' : 'none';
       chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+      toggle.setAttribute('aria-expanded', String(isHidden));
     });
   }
 }

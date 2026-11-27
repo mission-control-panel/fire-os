@@ -4,6 +4,10 @@ import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 import { planGoal } from './goal-planning';
 import { formatCurrency } from '../../lib/formatters';
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
+}
+
 export interface ActionItem {
   id: string;              // Unique key for checkbox persistence
   priority: 'urgent' | 'this-month' | 'upcoming' | 'future';
@@ -250,14 +254,14 @@ export function renderActionItems(state: FireOSState): string {
   }
   
   return items.map(item => `
-    <label class="action-item action-item--${item.priority} ${item.completed ? 'action-item--completed' : ''}">
-      <input type="checkbox" data-action-id="${item.id}" ${item.completed ? 'checked' : ''} class="cursor-pointer action-checkbox">
+    <label class="action-item action-item--${escapeHtml(item.priority)} ${item.completed ? 'action-item--completed' : ''}">
+      <input type="checkbox" data-action-id="${escapeHtml(item.id)}" ${item.completed ? 'checked' : ''} class="cursor-pointer action-checkbox">
       <div class="action-content">
         <div class="action-header">
-          <span class="action-category-badge">${item.category}</span>
-          <span class="action-title" style="font-weight: 500;">${item.title}</span>
+          <span class="action-category-badge">${escapeHtml(item.category)}</span>
+          <span class="action-title" style="font-weight: 500;">${escapeHtml(item.title)}</span>
         </div>
-        <span class="action-desc" style="display: block; font-size: 0.9rem; opacity: 0.8; margin-top: 0.25rem;">${item.description}</span>
+        <span class="action-desc" style="display: block; font-size: 0.9rem; opacity: 0.8; margin-top: 0.25rem;">${escapeHtml(item.description)}</span>
       </div>
     </label>
   `).join('');

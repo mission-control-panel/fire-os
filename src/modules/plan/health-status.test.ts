@@ -18,4 +18,13 @@ describe('financial health assessment', () => {
     expect(assessment.dimensions.liquidity).toBe('red');
     expect(assessment.details.some((detail) => detail.includes('2.0 months'))).toBe(true);
   });
+
+  it('does not call savings rate healthy when expenses are missing', () => {
+    const state = initializeState();
+    state.profile.monthlyIncome = 100_000;
+    state.profile.annualExpenses = 0;
+    const assessment = assessHealth(state);
+    expect(assessment.dimensions.savingsRate).toBe('yellow');
+    expect(assessment.details).toContain('Add essential monthly expenses to calculate savings rate.');
+  });
 });
