@@ -140,6 +140,14 @@ export function goalShortfallForInsurance(state: FireOSState): number | null {
   Object.entries(state.bonds).forEach(([id, holding]) => add('bonds', id, holding.amount));
   Object.entries(state.demat).forEach(([id, holding]) => add('demat', id, holding.currentValue));
   Object.entries(state.otherHoldings).forEach(([id, holding]) => add('other', id, holding.amount));
+  for (const goal of state.goals ?? []) {
+    for (const rawAssetId of goal.linkedAssetIds) {
+      const exact = values[rawAssetId];
+      const matches = Object.keys(values).filter((candidate) => candidate.endsWith(`:${rawAssetId}`));
+      if ((Number.isFinite(exact) && exact > 0) || matches.length === 1) continue;
+      return null;
+    }
+  }
   const allocation = allocateGoalAssets(state.goals ?? [], values);
   if (allocation.invalidAssetIds.length > 0) return null;
   const shortfalls = (state.goals ?? []).map((goal) => {

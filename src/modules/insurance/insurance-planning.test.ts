@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { assessInsuranceNeeds, policyLifecycle, safeInsuranceSum, summarizePolicyCoverage } from './insurance-planning';
+import { assessInsuranceNeeds, goalShortfallForInsurance, policyLifecycle, safeInsuranceSum, summarizePolicyCoverage } from './insurance-planning';
+import { initializeState } from '../../types/state';
 import type { InsurancePolicy } from '../../types/state';
 
 const policy = (overrides: Partial<InsurancePolicy> = {}): InsurancePolicy => ({
@@ -68,5 +69,11 @@ describe('insurance planning', () => {
     expect(result.requiredHealthCover).toBe(4_000_000);
     expect(result.healthGap).toBe(0);
     expect(result.assumptions.length).toBe(3);
+  });
+
+  it('fails closed when a linked goal asset has no current valuation', () => {
+    const state = initializeState();
+    state.goals = [{ id: 'home', name: 'Home', kind: 'home', targetToday: 1_000_000, targetDate: '2030-01', inflation: 'cpi', linkedAssetIds: ['fd:missing'], currentAmount: 0, priority: 1, riskBucket: 'medium' }];
+    expect(goalShortfallForInsurance(state)).toBeNull();
   });
 });

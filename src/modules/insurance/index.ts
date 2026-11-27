@@ -48,7 +48,7 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
     policies: state.insurance.policies,
   });
   const termAdequate = needs.status === 'available' && needs.termGap === 0;
-  const healthAdequate = needs.status === 'available' && needs.healthGap === 0;
+  const healthAdequate = needs.healthGap === 0;
   const displayAmount = (amount: number | null) => amount === null ? 'Unavailable' : formatCurrency(amount);
   const policyRows = (state.insurance.policies ?? []).map((policy) => {
     const lifecycle = policyLifecycle(policy);
@@ -70,7 +70,7 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
           <div class="adequacy-check ${termAdequate ? 'adequate' : 'inadequate'}">
             <span class="status-icon">${termAdequate ? successIcon : warningIcon}</span>
             <div class="status-text">
-              <strong>${termAdequate ? 'Adequate Cover' : 'Underinsured'}</strong>
+              <strong>${needs.status === 'insufficient-data' ? 'Needs more data' : termAdequate ? 'Adequate Cover' : 'Underinsured'}</strong>
               <span>Planning need: ${displayAmount(needs.requiredTermCover)} · Gap: ${displayAmount(needs.termGap)}</span>
             </div>
           </div>
