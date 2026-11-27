@@ -295,6 +295,10 @@ with a default of 0 when not set. Read [UI](ui.md) for tab-level logic and addit
   deterministic inflation, debt-payoff, FD-ladder, rent-versus-buy,
   salary-growth and seeded market-stress/withdrawal calculations; it never
   mutates portfolio state.
+- **Investment analytics** (`src/modules/analytics/`): read-only currency and
+  sector exposure, concentration, explicitly sourced fund overlap and weighted
+  expense ratios. Historical volatility and max drawdown require an ordered,
+  positive real series; missing metadata remains an insufficient-data result.
 - **Insurance** (`src/modules/insurance/`): term and health cover data plus
   provider/expiry metadata and optional employer/personal policy records.
   Active-policy aggregation, renewal/expiry states and assumption-based gaps
