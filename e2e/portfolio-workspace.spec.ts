@@ -3,7 +3,9 @@ import { expect, test } from '@playwright/test';
 test.describe('portfolio workspace', () => {
   test('records a synthetic purchase and shows its reconciled holding', async ({ page }) => {
     await page.goto('/portfolio');
-    await expect(page.getByRole('heading', { name: 'Transactions, holdings and reconciliation' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Transactions, holdings and reconciliation' }),
+    ).toBeVisible();
     await page.locator('#ledger-account').fill('Demo account');
     await page.locator('#ledger-instrument').fill('Demo fund');
     await page.locator('#ledger-amount').fill('12500');
@@ -26,7 +28,9 @@ test.describe('portfolio workspace', () => {
       mimeType: 'text/csv',
       buffer: Buffer.from(csv),
     });
-    await expect(page.getByRole('status').filter({ hasText: '1 valid rows ready to import.' })).toBeVisible();
+    await expect(
+      page.getByRole('status').filter({ hasText: '1 valid rows ready to import.' }),
+    ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Merge valid import' })).toBeEnabled();
   });
 });
