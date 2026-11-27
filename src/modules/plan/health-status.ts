@@ -1,8 +1,7 @@
 import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, fiProgress } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
-import { assessInsuranceNeeds } from '../insurance/insurance-planning';
-import { planGoal } from './goal-planning';
+import { assessInsuranceNeeds, goalShortfallForInsurance, safeInsuranceSum } from '../insurance/insurance-planning';
 
 export interface HealthAssessment {
   status: 'green' | 'yellow' | 'red';
@@ -22,8 +21,8 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   // Default assumptions for missing values to avoid crashes
   const annualIncome = state.profile.monthlyIncome ? state.profile.monthlyIncome * 12 : 0;
   const safety = portfolioSafetyReport(state);
-  const outstandingDebt = Object.values(state.liabilities ?? {}).reduce((sum, liability) => sum + Math.max(0, liability.amount || 0), 0);
-  const futureGoalShortfall = (state.goals ?? []).reduce((sum, goal) => sum + Math.max(0, planGoal(goal).shortfallAtDate), 0);
+  const outstandingDebt = safeInsuranceSum(Object.values(state.liabilities ?? {}).map((liability) => Math.max(0, liability.amount || 0)));
+  const futureGoalShortfall = goalShortfallForInsurance(state);
   
   // Dimensions
   let fiStatus: 'green' | 'yellow' | 'red' = 'green';
@@ -49,7 +48,7 @@ export function assessHealth(state: FireOSState): HealthAssessment {
     dependents: Math.max(0, ins.health.familySize - 1),
     outstandingDebt,
     futureGoalShortfall,
-    accessibleAssets: safety.liquidity.accessibleValue ?? 0,
+    accessibleAssets: safety.liquidity.status === 'available' ? safety.liquidity.accessibleValue : null,
     familySize: ins.health.familySize,
     currentTermCover: ins.termLife.currentCover,
     currentHealthCover: ins.health.currentCover,
@@ -61,9 +60,12 @@ export function assessHealth(state: FireOSState): HealthAssessment {
     protectionStatus = 'red';
     protectionDetail = 'No insurance data configured.';
   } else if (insuranceNeeds) {
-    if (insuranceNeeds.termGap > 0 || insuranceNeeds.healthGap > 0) {
+    if (insuranceNeeds.status === 'insufficient-data') {
       protectionStatus = 'yellow';
-      protectionDetail = `Insurance gap detected. Need term cover of ₹${Math.round(insuranceNeeds.requiredTermCover / 100000)}L and health cover of ₹${Math.round(insuranceNeeds.requiredHealthCover / 100000)}L.`;
+      protectionDetail = 'Refresh debt, goal and accessible-asset data before relying on the insurance gap.';
+    } else if (insuranceNeeds.termGap !== null && (insuranceNeeds.termGap > 0 || insuranceNeeds.healthGap > 0)) {
+      protectionStatus = 'yellow';
+      protectionDetail = `Insurance gap detected. Need term cover of ₹${Math.round((insuranceNeeds.requiredTermCover ?? 0) / 100000)}L and health cover of ₹${Math.round(insuranceNeeds.requiredHealthCover / 100000)}L.`;
     }
   }
 

@@ -1,13 +1,14 @@
-import type { InsurancePolicy, InsurancePolicyKind } from '../../types/state';
+import type { FireOSState, InsurancePolicy, InsurancePolicyKind } from '../../types/state';
+import { allocateGoalAssets, planGoal } from '../plan/goal-planning';
 
 export type PolicyLifecycle = 'active' | 'expiring-soon' | 'expired' | 'no-expiry' | 'unknown';
 
 export interface InsuranceNeedsInput {
   annualIncome: number;
   dependents: number;
-  outstandingDebt: number;
-  futureGoalShortfall: number;
-  accessibleAssets: number;
+  outstandingDebt: number | null;
+  futureGoalShortfall: number | null;
+  accessibleAssets: number | null;
   familySize: number;
   currentTermCover: number;
   currentHealthCover: number;
@@ -20,9 +21,10 @@ export interface InsuranceNeedsInput {
 }
 
 export interface InsuranceNeeds {
-  requiredTermCover: number;
+  status: 'available' | 'insufficient-data';
+  requiredTermCover: number | null;
   currentTermCover: number;
-  termGap: number;
+  termGap: number | null;
   requiredHealthCover: number;
   currentHealthCover: number;
   healthGap: number;
@@ -70,9 +72,10 @@ export function summarizePolicyCoverage(policies: readonly InsurancePolicy[] = [
  */
 export function assessInsuranceNeeds(input: InsuranceNeedsInput): InsuranceNeeds {
   const annualIncome = validAmount(input.annualIncome);
-  const debt = validAmount(input.outstandingDebt);
-  const goalShortfall = validAmount(input.futureGoalShortfall);
-  const accessibleAssets = validAmount(input.accessibleAssets);
+  const debt = validAmount(input.outstandingDebt ?? 0);
+  const goalShortfall = validAmount(input.futureGoalShortfall ?? 0);
+  const accessibleAssets = validAmount(input.accessibleAssets ?? 0);
+  const incomplete = input.outstandingDebt === null || input.futureGoalShortfall === null || input.accessibleAssets === null;
   const dependents = Math.max(0, Math.floor(input.dependents || 0));
   const familySize = Math.max(1, Math.floor(input.familySize || 1));
   const policyCoverage = summarizePolicyCoverage(input.policies, { today: input.today });
@@ -90,9 +93,10 @@ export function assessInsuranceNeeds(input: InsuranceNeedsInput): InsuranceNeeds
   const requiredHealthCover = familySize * perPerson;
   const hasConditionalTopUp = (input.policies ?? []).some((policy) => policy.kind === 'health' && policy.topUpCover > 0 && policy.deductible > 0);
   return {
-    requiredTermCover,
+    status: incomplete ? 'insufficient-data' : 'available',
+    requiredTermCover: incomplete ? null : requiredTermCover,
     currentTermCover,
-    termGap: Math.max(0, requiredTermCover - currentTermCover),
+    termGap: incomplete ? null : Math.max(0, requiredTermCover - currentTermCover),
     requiredHealthCover,
     currentHealthCover,
     healthGap: Math.max(0, requiredHealthCover - currentHealthCover),
@@ -100,9 +104,49 @@ export function assessInsuranceNeeds(input: InsuranceNeedsInput): InsuranceNeeds
       'Term need uses ten years of income replacement plus dependents, debt and future-goal shortfall, less accessible assets.',
       `Health need uses ₹${Math.round(perPerson / 100_000)}L per family member; adjust this assumption for your household and care needs.`,
       'Employer cover is included only while its policy expiry is not past; verify portability before relying on it.',
+      ...(incomplete ? ['Some debt, goal or accessible-asset values are unavailable; term-cover gap is not fully assessable.'] : []),
       ...(hasConditionalTopUp ? ['Top-up cover with a deductible is excluded from usable cover until the deductible is reviewed.'] : []),
     ],
   };
+}
+
+/** Return a bounded sum, or null when a source is unavailable/overflows. */
+export function safeInsuranceSum(values: readonly number[]): number | null {
+  let total = 0;
+  for (const value of values) {
+    if (!Number.isFinite(value) || value < 0 || total + value > Number.MAX_SAFE_INTEGER) return null;
+    total += value;
+  }
+  return total;
+}
+
+/** Derive goal shortfall using the same priority allocation as the Goals route. */
+export function goalShortfallForInsurance(state: FireOSState): number | null {
+  const values: Record<string, number> = {};
+  const add = (kind: string, id: string, value: number) => {
+    if (Number.isFinite(value) && value > 0) values[`${kind}:${id}`] = value;
+  };
+  const navValue = (schemeCode: string | undefined): number => {
+    const nav = schemeCode ? state.nav[schemeCode] : undefined;
+    if (!nav || nav.status === 'stale' || !Number.isFinite(nav.nav) || nav.nav <= 0) return 0;
+    const timestamp = Date.parse(nav.timestamp);
+    return Number.isFinite(timestamp) && timestamp <= Date.now() && Date.now() - timestamp <= nav.ttl ? nav.nav : 0;
+  };
+  Object.entries(state.sip).forEach(([id, holding]) => add('sip', id, holding.units * navValue(holding.schemeCode)));
+  Object.entries(state.mf).forEach(([id, holding]) => add('mf', id, holding.units * navValue(holding.schemeCode)));
+  Object.entries(state.fd).forEach(([id, holding]) => add('fd', id, holding.amount));
+  Object.entries(state.epf).forEach(([id, holding]) => add('epf', id, holding.amount));
+  Object.entries(state.esop).forEach(([id, holding]) => add('esop', id, holding.amount));
+  Object.entries(state.bonds).forEach(([id, holding]) => add('bonds', id, holding.amount));
+  Object.entries(state.demat).forEach(([id, holding]) => add('demat', id, holding.currentValue));
+  Object.entries(state.otherHoldings).forEach(([id, holding]) => add('other', id, holding.amount));
+  const allocation = allocateGoalAssets(state.goals ?? [], values);
+  if (allocation.invalidAssetIds.length > 0) return null;
+  const shortfalls = (state.goals ?? []).map((goal) => {
+    const plan = planGoal({ ...goal, currentAmount: goal.currentAmount + (allocation.allocatedByGoal[goal.id] ?? 0) });
+    return plan.status === 'missing-data' ? null : plan.shortfallAtDate;
+  });
+  return shortfalls.some((value) => value === null) ? null : safeInsuranceSum(shortfalls as number[]);
 }
 
 function isActiveExpiry(expiryDate: string, today = new Date()): boolean {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessInsuranceNeeds, policyLifecycle, summarizePolicyCoverage } from './insurance-planning';
+import { assessInsuranceNeeds, policyLifecycle, safeInsuranceSum, summarizePolicyCoverage } from './insurance-planning';
 import type { InsurancePolicy } from '../../types/state';
 
 const policy = (overrides: Partial<InsurancePolicy> = {}): InsurancePolicy => ({
@@ -45,6 +45,16 @@ describe('insurance planning', () => {
     });
     expect(result.currentTermCover).toBe(0);
     expect(result.currentHealthCover).toBe(0);
+  });
+
+  it('fails closed when obligation aggregation overflows', () => {
+    expect(safeInsuranceSum([Number.MAX_SAFE_INTEGER, 1])).toBeNull();
+    const result = assessInsuranceNeeds({
+      annualIncome: 1_000_000, dependents: 0, outstandingDebt: null, futureGoalShortfall: 0, accessibleAssets: 0,
+      familySize: 1, currentTermCover: 0, currentHealthCover: 0,
+    });
+    expect(result.status).toBe('insufficient-data');
+    expect(result.termGap).toBeNull();
   });
 
   it('calculates term needs from dependents, debt, goals and accessible assets', () => {

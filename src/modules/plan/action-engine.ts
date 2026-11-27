@@ -2,7 +2,7 @@ import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, floatIndicator } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 import { planGoal } from './goal-planning';
-import { assessInsuranceNeeds } from '../insurance/insurance-planning';
+import { assessInsuranceNeeds, goalShortfallForInsurance, safeInsuranceSum } from '../insurance/insurance-planning';
 import { formatCurrency } from '../../lib/formatters';
 
 function escapeHtml(value: string): string {
@@ -72,9 +72,9 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
   const insuranceNeeds = ins ? assessInsuranceNeeds({
     annualIncome,
     dependents: Math.max(0, ins.health.familySize - 1),
-    outstandingDebt: Object.values(state.liabilities ?? {}).reduce((sum, liability) => sum + Math.max(0, liability.amount || 0), 0),
-    futureGoalShortfall: (state.goals ?? []).reduce((sum, goal) => sum + Math.max(0, planGoal(goal).shortfallAtDate), 0),
-    accessibleAssets: portfolioSafetyReport(state).liquidity.accessibleValue ?? 0,
+    outstandingDebt: safeInsuranceSum(Object.values(state.liabilities ?? {}).map((liability) => Math.max(0, liability.amount || 0))),
+    futureGoalShortfall: goalShortfallForInsurance(state),
+    accessibleAssets: portfolioSafetyReport(state).liquidity.status === 'available' ? portfolioSafetyReport(state).liquidity.accessibleValue : null,
     familySize: ins.health.familySize,
     currentTermCover: ins.termLife.currentCover,
     currentHealthCover: ins.health.currentCover,
@@ -92,7 +92,8 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
     });
   } else {
     let gaps = [];
-    if (insuranceNeeds?.termGap && insuranceNeeds.termGap > 0) gaps.push(`term gap ₹${Math.round(insuranceNeeds.termGap / 100000)}L`);
+    if (insuranceNeeds?.status === 'insufficient-data') gaps.push('term gap requires refreshed debt, goal and accessible-asset data');
+    else if (insuranceNeeds?.termGap && insuranceNeeds.termGap > 0) gaps.push(`term gap ₹${Math.round(insuranceNeeds.termGap / 100000)}L`);
     if (insuranceNeeds?.healthGap && insuranceNeeds.healthGap > 0) gaps.push(`health gap ₹${Math.round(insuranceNeeds.healthGap / 100000)}L`);
     
     if (gaps.length > 0) {

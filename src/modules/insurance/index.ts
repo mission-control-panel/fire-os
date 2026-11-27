@@ -4,9 +4,8 @@
  */
 import { formatCurrency } from '../../lib/formatters';
 import { createFeatureContext, type FeatureContext } from '../../core/feature-context';
-import { assessInsuranceNeeds, policyLifecycle } from './insurance-planning';
+import { assessInsuranceNeeds, goalShortfallForInsurance, policyLifecycle, safeInsuranceSum } from './insurance-planning';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
-import { planGoal } from '../plan/goal-planning';
 import './styles.css';
 
 const DEBOUNCE_MS = 500;
@@ -33,14 +32,14 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
   const familySize = state.insurance.health.familySize || 1;
   const currentHealthCover = state.insurance.health.currentCover || 0;
   const safety = portfolioSafetyReport(state);
-  const outstandingDebt = Object.values(state.liabilities ?? {}).reduce((sum, liability) => sum + Math.max(0, liability.amount || 0), 0);
-  const futureGoalShortfall = (state.goals ?? []).reduce((sum, goal) => sum + Math.max(0, planGoal(goal).shortfallAtDate), 0);
+  const outstandingDebt = safeInsuranceSum(Object.values(state.liabilities ?? {}).map((liability) => Math.max(0, liability.amount || 0)));
+  const futureGoalShortfall = goalShortfallForInsurance(state);
   const needs = assessInsuranceNeeds({
     annualIncome,
     dependents: Math.max(0, familySize - 1),
     outstandingDebt,
     futureGoalShortfall,
-    accessibleAssets: safety.liquidity.accessibleValue ?? 0,
+    accessibleAssets: safety.liquidity.status === 'available' ? safety.liquidity.accessibleValue : null,
     familySize,
     currentTermCover,
     currentHealthCover,
@@ -48,8 +47,9 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
     legacyHealthExpiryDate: state.insurance.health.expiryDate,
     policies: state.insurance.policies,
   });
-  const termAdequate = needs.termGap === 0;
-  const healthAdequate = needs.healthGap === 0;
+  const termAdequate = needs.status === 'available' && needs.termGap === 0;
+  const healthAdequate = needs.status === 'available' && needs.healthGap === 0;
+  const displayAmount = (amount: number | null) => amount === null ? 'Unavailable' : formatCurrency(amount);
   const policyRows = (state.insurance.policies ?? []).map((policy) => {
     const lifecycle = policyLifecycle(policy);
     const label = lifecycle.status === 'expiring-soon' ? `Renew within ${lifecycle.daysRemaining} days` : lifecycle.status.replace('-', ' ');
@@ -71,7 +71,7 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
             <span class="status-icon">${termAdequate ? successIcon : warningIcon}</span>
             <div class="status-text">
               <strong>${termAdequate ? 'Adequate Cover' : 'Underinsured'}</strong>
-            <span>Planning need: ${formatCurrency(needs.requiredTermCover)} · Gap: ${formatCurrency(needs.termGap)}</span>
+              <span>Planning need: ${displayAmount(needs.requiredTermCover)} · Gap: ${displayAmount(needs.termGap)}</span>
             </div>
           </div>
           
@@ -102,7 +102,7 @@ export function renderInsurance(container?: HTMLElement, context: FeatureContext
             <span class="status-icon">${healthAdequate ? successIcon : warningIcon}</span>
             <div class="status-text">
               <strong>${healthAdequate ? 'Adequate Cover' : 'Underinsured'}</strong>
-            <span>Planning need: ${formatCurrency(needs.requiredHealthCover)} · Gap: ${formatCurrency(needs.healthGap)}</span>
+              <span>Planning need: ${displayAmount(needs.requiredHealthCover)} · Gap: ${displayAmount(needs.healthGap)}</span>
             </div>
           </div>
           
