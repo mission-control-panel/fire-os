@@ -366,6 +366,27 @@ describe('portfolio Firestore rules', () => {
     }));
   });
 
+  it('allows bounded employee-equity grants and rejects an unbounded grants payload', async () => {
+    const db = testEnvironment.authenticatedContext('owner-equity').firestore();
+    await assertSucceeds(setDoc(doc(db, 'users/owner-equity/portfolio/state'), {
+      ...validEnvelope,
+      data: {
+        esopDetails: {
+          shares: 10, grantPrice: 20, vestingSchedule: [],
+          grants: [{ id: 'grant-1', kind: 'rsu', symbol: 'ACME', currency: 'INR', grantedQuantity: 10, vestedQuantity: 10, exercisedQuantity: 0, soldQuantity: 0, strikePrice: 0, fairMarketValue: 100, valuationAsOf: '2026-11-27' }],
+        },
+      },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-equity/portfolio/state'), {
+      ...validEnvelope,
+      data: { esopDetails: { shares: 10, grantPrice: 20, vestingSchedule: [], grants: Array.from({ length: 101 }, (_, index) => ({ id: `grant-${index}`, kind: 'rsu', symbol: 'ACME', currency: 'INR', grantedQuantity: 1, vestedQuantity: 1, exercisedQuantity: 0, soldQuantity: 0, strikePrice: 0, fairMarketValue: 100, valuationAsOf: '2026-11-27' })) } },
+    }));
+    await assertFails(setDoc(doc(db, 'users/owner-equity/portfolio/state'), {
+      ...validEnvelope,
+      data: { esopDetails: { shares: 10, grantPrice: 20, vestingSchedule: [], grants: [{ id: 'bad', kind: 'rsu', symbol: 'ACME', currency: 'INR', grantedQuantity: -1, vestedQuantity: 1, exercisedQuantity: 0, soldQuantity: 0, strikePrice: 0, fairMarketValue: 100 }] } },
+    }));
+  });
+
   it('revalidates nested values on update', async () => {
     const db = testEnvironment.authenticatedContext('owner-8').firestore();
     const stateRef = doc(db, 'users/owner-8/portfolio/state');

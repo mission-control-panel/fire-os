@@ -1,6 +1,8 @@
 import { createFeatureContext, type FeatureContext } from '../../core/feature-context';
 import type { EsopValuation } from '../api/esop';
 import { DEFAULT_FUND_BUCKETS } from '../../lib/fundMatcher';
+import { equityInstrumentLabels, planEmployeeEquity } from './equity-planning';
+import type { EquityGrant, EquityInstrumentKind } from '../../types/state';
 import './styles.css';
 
 let moduleContainerId: string = 'esop';
@@ -97,6 +99,10 @@ export function renderEsop(container?: HTMLElement, context: FeatureContext = ac
   // Calculate percentage of net worth
   const { netWorth } = context.ports.calculations.totalNetWorth(D);
   const percentNetWorth = netWorth > 0 ? (grossInr / netWorth) * 100 : 0;
+  const equityPlan = planEmployeeEquity(D.esopDetails.grants ?? [], {
+    investableAssetsInr: netWorth > 0 ? netWorth : null,
+    goalShortfallInr: D.goals.length ? D.goals.reduce((total, goal) => total + Math.max(0, goal.targetToday - goal.currentAmount), 0) : null,
+  });
 
   // 2. Trigger Monitor Calculations (general liquidation rules)
   const currentYear = new Date().getFullYear();
@@ -316,6 +322,35 @@ export function renderEsop(container?: HTMLElement, context: FeatureContext = ac
           </div>
         </div>
       </div>
+
+      <section class="esop-card equity-lifecycle-card" aria-labelledby="equity-lifecycle-title">
+        <h3 id="equity-lifecycle-title">Employee equity lifecycle</h3>
+        <p class="section-desc">Track grants separately from legacy holdings. Values remain unavailable when a manual valuation is stale or missing.</p>
+        <div class="equity-summary-grid">
+          <div><span>Available value</span><strong>${equityPlan.availableValueInr === null ? 'Unavailable' : formatRupeesAndLakhs(equityPlan.availableValueInr)}</strong></div>
+          <div><span>Restricted / unvested</span><strong>${equityPlan.restrictedValueInr === null ? 'Unavailable' : formatRupeesAndLakhs(equityPlan.restrictedValueInr)}</strong></div>
+          <div><span>Detailed-grant concentration</span><strong>${equityPlan.concentrationPercent === null ? 'Unavailable' : `${equityPlan.concentrationPercent.toFixed(1)}% of net assets`}</strong></div>
+          <div><span>Detailed-grant goal scenario</span><strong>${equityPlan.liquidationToGoalsInr === null ? 'Unavailable' : formatRupeesAndLakhs(equityPlan.liquidationToGoalsInr)}</strong></div>
+        </div>
+        ${equityPlan.grants.length ? `<div class="equity-grant-list">${equityPlan.grants.map((summary) => `<div class="equity-grant-row">
+          <div><strong>${escapeHtml(summary.grant.symbol || 'Unnamed')}</strong><span>${equityInstrumentLabels[summary.grant.kind]} · ${summary.lifecycle}</span></div>
+          <div><span>${summary.available} available / ${summary.restricted} restricted</span><span class="equity-status ${summary.valuationStatus}">${summary.valuationStatus === 'current' && summary.valueInr !== null ? formatRupeesAndLakhs(summary.valueInr) : summary.valueInr === null ? 'Unavailable' : summary.valuationStatus}</span></div>
+        </div>`).join('')}</div>` : '<p class="empty-state">No detailed grants recorded yet.</p>'}
+        <form id="equity-grant-form" class="equity-grant-form" onsubmit="event.preventDefault();">
+          <label>Type<select id="equity-kind"><option value="esop">ESOP option</option><option value="rsu">RSU</option><option value="espp">ESPP</option><option value="acquired">Acquired shares</option></select></label>
+          <label>Symbol<input id="equity-symbol" maxlength="30" required placeholder="ACME"></label>
+          <label>Granted<input id="equity-granted" type="number" min="0" step="any" required></label>
+          <label>Vested<input id="equity-vested" type="number" min="0" step="any" required></label>
+          <label>Exercised<input id="equity-exercised" type="number" min="0" step="any" value="0" required></label>
+          <label>Sold<input id="equity-sold" type="number" min="0" step="any" value="0" required></label>
+          <label>Strike / cost<input id="equity-strike" type="number" min="0" step="any" value="0" required></label>
+          <label>Price<input id="equity-price" type="number" min="0" step="any" required></label>
+          <label>Currency<input id="equity-currency" maxlength="10" value="INR" required></label>
+          <label>Valuation date<input id="equity-date" type="date" required></label>
+          <button type="submit" class="btn-refresh">Add grant</button>
+        </form>
+        <p class="equity-assumptions">${equityPlan.assumptions.map(escapeHtml).join(' ')}</p>
+      </section>
     </div>
   `;
 
@@ -411,6 +446,20 @@ function attachEsopHandlers() {
     valuationResults = [];
     hasFetchedValuations = false;
     renderEsop();
+  });
+
+  document.getElementById('equity-grant-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const value = (id: string) => (document.getElementById(id) as HTMLInputElement).value;
+    const number = (id: string) => Number(value(id));
+    const kind = value('equity-kind') as EquityInstrumentKind;
+    const values = ['equity-granted', 'equity-vested', 'equity-exercised', 'equity-sold', 'equity-strike', 'equity-price'].map(number);
+    if ((D.esopDetails.grants?.length ?? 0) >= 1 || !['esop', 'rsu', 'espp', 'acquired'].includes(kind) || values.some((item) => !Number.isFinite(item) || item < 0) || !value('equity-symbol') || !value('equity-date') || !value('equity-currency')) return;
+    const [grantedQuantity, vestedQuantity, exercisedQuantity, soldQuantity, strikePrice, fairMarketValue] = values;
+    if (vestedQuantity > grantedQuantity || exercisedQuantity + soldQuantity > vestedQuantity) return;
+    const newGrant: EquityGrant = { id: crypto.randomUUID?.() ?? `grant-${Date.now()}`, kind, symbol: value('equity-symbol').trim(), currency: value('equity-currency').trim().toUpperCase(), grantedQuantity, vestedQuantity, exercisedQuantity, soldQuantity, strikePrice, fairMarketValue, valuationAsOf: value('equity-date') };
+    D.esopDetails.grants = [...(D.esopDetails.grants ?? []), newGrant];
+    debounceSave(true);
   });
 }
 
@@ -546,4 +595,8 @@ function formatRupeesAndLakhs(amount: number): string {
     maximumFractionDigits: 0
   });
   return `₹${formatter.format(Math.round(amount))} (${lakhs.toFixed(1)}L)`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
 }
