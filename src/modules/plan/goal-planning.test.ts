@@ -55,7 +55,7 @@ describe('goal planning', () => {
     const result = allocateGoalAssets([
       goal({ id: 'high', priority: 1, linkedAssetIds: ['sip:fund', 'fund'] }),
       goal({ id: 'low', priority: 2, linkedAssetIds: ['fund'] }),
-    ], { 'sip:fund': 500_000, fund: 500_000, cash: 100_000 });
+    ], { 'sip:fund': 500_000, cash: 100_000 });
     expect(result.allocatedByGoal).toEqual({ high: 500_000, low: 0 });
     expect(result.duplicateAssetIds).toEqual(['fund']);
     expect(result.unallocatedAssets).toEqual(['cash']);
@@ -66,7 +66,7 @@ describe('goal planning', () => {
     const result = allocateGoalAssets([
       goal({ id: 'high', priority: 1, linkedAssetIds: ['sip:fund:2024', 'fund:2024'] }),
       goal({ id: 'low', priority: 2, linkedAssetIds: ['fund:2024'] }),
-    ], { 'sip:fund:2024': 500_000, 'fund:2024': 500_000, cash: Number.MAX_SAFE_INTEGER });
+    ], { 'sip:fund:2024': 500_000, cash: Number.MAX_SAFE_INTEGER });
     expect(result.allocatedByGoal).toEqual({ high: 500_000, low: 0 });
     expect(result.duplicateAssetIds).toEqual(['fund:2024']);
     expect(result.invalidAssetIds).toEqual([]);

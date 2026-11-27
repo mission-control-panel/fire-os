@@ -55,13 +55,9 @@ export function GoalsRoute() {
 
   const dialogOpen = creating || editing !== null;
   const assetEntries: Array<[string, number]> = [];
-  const bareAssetValues = new Map<string, number>();
-  const bareAssetCounts = new Map<string, number>();
   const addAsset = (kind: string, id: string, value: number) => {
     if (!Number.isFinite(value) || value <= 0) return;
     assetEntries.push([`${kind}:${id}`, value]);
-    bareAssetValues.set(id, (bareAssetValues.get(id) ?? 0) + value);
-    bareAssetCounts.set(id, (bareAssetCounts.get(id) ?? 0) + 1);
   };
   const currentNavValue = (schemeCode: string | undefined): number => {
     const nav = schemeCode ? appState.nav[schemeCode] : undefined;
@@ -78,9 +74,6 @@ export function GoalsRoute() {
   Object.entries(appState.bonds).forEach(([id, holding]) => addAsset('bonds', id, holding.amount));
   Object.entries(appState.demat).forEach(([id, holding]) => addAsset('demat', id, holding.currentValue));
   Object.entries(appState.otherHoldings).forEach(([id, holding]) => addAsset('other', id, holding.amount));
-  for (const [id, value] of bareAssetValues) {
-    if (bareAssetCounts.get(id) === 1) assetEntries.push([id, value]);
-  }
   const assetValues = Object.fromEntries(assetEntries);
   const allocation = allocateGoalAssets(goals, assetValues);
 
