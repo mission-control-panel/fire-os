@@ -33,4 +33,30 @@ test.describe('portfolio workspace', () => {
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Merge valid import' })).toBeEnabled();
   });
+
+  test('keeps punctuation-distinct accounts separate and rejects oversized names', async ({
+    page,
+  }) => {
+    await page.goto('/portfolio');
+    await page.locator('#ledger-account').fill('HDFC Bank');
+    await page.locator('#ledger-instrument').fill('Fund A');
+    await page.locator('#ledger-amount').fill('100');
+    await page.locator('#ledger-quantity').fill('1');
+    await page.getByRole('button', { name: 'Save transaction' }).click();
+
+    await page.locator('#ledger-account').fill('HDFC-Bank');
+    await page.locator('#ledger-instrument').fill('Fund B');
+    await page.locator('#ledger-amount').fill('200');
+    await page.locator('#ledger-quantity').fill('1');
+    await page.getByRole('button', { name: 'Save transaction' }).click();
+    await expect(page.getByRole('cell', { name: 'HDFC Bank' }).first()).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'HDFC-Bank' }).first()).toBeVisible();
+
+    await page.locator('#ledger-account').fill('A'.repeat(81));
+    await page.locator('#ledger-amount').fill('300');
+    await page.getByRole('button', { name: 'Save transaction' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: '80 characters or fewer' }),
+    ).toBeVisible();
+  });
 });

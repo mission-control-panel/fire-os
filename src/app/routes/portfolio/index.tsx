@@ -15,10 +15,18 @@ import { Button, Card, CardTitle, Input, Table, TableBody, TableCaption, TableCe
 import { showToast } from '../../../modules/ui/Toast';
 
 const TRANSACTION_TYPES: LedgerTransactionType[] = ['purchase', 'sale', 'dividend', 'interest', 'fee', 'opening_balance'];
+const MAX_ENTITY_NAME_LENGTH = 80;
 
 function stableId(value: string, fallback: string): string {
-  const normalised = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return normalised || fallback;
+  const trimmed = value.trim();
+  let hash = 2166136261;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    hash ^= trimmed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const normalised = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const suffix = (hash >>> 0).toString(36);
+  return `${(normalised || fallback).slice(0, 80 - suffix.length - 1)}-${suffix}`;
 }
 
 export function PortfolioWorkspace() {
@@ -48,6 +56,9 @@ export function PortfolioWorkspace() {
     const quantityMicros = quantity.trim() ? Math.round(Number(quantity) * 1_000_000) : undefined;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isSafeInteger(amountPaise) || amountPaise < 0) {
       setMessage('Enter a valid date and non-negative amount.'); return;
+    }
+    if (account.trim().length > MAX_ENTITY_NAME_LENGTH || instrument.trim().length > MAX_ENTITY_NAME_LENGTH) {
+      setMessage(`Account and instrument names must be ${MAX_ENTITY_NAME_LENGTH} characters or fewer.`); return;
     }
     if (quantityMicros !== undefined && (!Number.isSafeInteger(quantityMicros) || quantityMicros < 0)) {
       setMessage('Quantity must be a non-negative finite number.'); return;
