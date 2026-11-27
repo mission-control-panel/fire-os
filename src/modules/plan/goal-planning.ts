@@ -60,6 +60,7 @@ export function planGoal(
   if (!Number.isFinite(targetAtDate) || !Number.isFinite(growth)) return missingPlan();
   const futureCurrentAmount = goal.currentAmount * growth;
   const shortfallAtDate = Math.max(0, targetAtDate - futureCurrentAmount);
+  if (!Number.isFinite(futureCurrentAmount) || !Number.isFinite(shortfallAtDate)) return missingPlan();
   if (shortfallAtDate === 0) return { targetAtDate, monthsRemaining: months, shortfallAtDate, requiredMonthlyContribution: 0, contributionGap: 0, status: 'reached' };
   if (months <= 0) return { targetAtDate, monthsRemaining: months, shortfallAtDate, requiredMonthlyContribution: null, contributionGap: null, status: 'overdue' };
   const requiredMonthlyContribution = monthlyRate === 0
@@ -82,12 +83,19 @@ export function allocateGoalAssets(goals: readonly Goal[], assetValues: Record<s
   const allocatedByGoal: Record<string, number> = Object.fromEntries(goals.map((goal) => [goal.id, 0]));
   const owners = new Map<string, Goal>();
   const duplicateAssetIds = new Set<string>();
+  const assetIds = Object.keys(assetValues);
+  const canonicalAssetId = (assetId: string): string => {
+    if (assetValues[assetId] !== undefined && assetId.includes(':')) return assetId;
+    const matches = assetIds.filter((candidate) => candidate.endsWith(`:${assetId}`));
+    return matches.length === 1 ? matches[0] : assetId;
+  };
   const ordered = [...goals].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
   for (const goal of ordered) {
-    for (const assetId of goal.linkedAssetIds) {
+    for (const rawAssetId of goal.linkedAssetIds) {
+      const assetId = canonicalAssetId(rawAssetId);
       const previous = owners.get(assetId);
       if (previous) {
-        duplicateAssetIds.add(assetId);
+        duplicateAssetIds.add(rawAssetId);
         continue;
       }
       owners.set(assetId, goal);
@@ -97,7 +105,7 @@ export function allocateGoalAssets(goals: readonly Goal[], assetValues: Record<s
   }
   return {
     allocatedByGoal,
-    unallocatedAssets: Object.keys(assetValues).filter((assetId) => !owners.has(assetId)),
+    unallocatedAssets: assetIds.filter((assetId) => canonicalAssetId(assetId) === assetId && !owners.has(assetId)),
     duplicateAssetIds: [...duplicateAssetIds].sort(),
   };
 }

@@ -31,6 +31,7 @@ describe('goal planning', () => {
 
   it('rejects numeric overflow instead of displaying a fabricated zero plan', () => {
     expect(planGoal(goal({ targetToday: Number.MAX_VALUE }), { today: new Date('2026-01-01T00:00:00Z') }).status).toBe('missing-data');
+    expect(planGoal(goal({ currentAmount: Number.MAX_SAFE_INTEGER, targetDate: '9200-12' }), { today: new Date('2026-01-01T00:00:00Z') }).status).toBe('missing-data');
   });
 
   it('prevents double allocation by priority and reports overlap', () => {
@@ -41,5 +42,15 @@ describe('goal planning', () => {
     expect(result.allocatedByGoal).toEqual({ low: 100_000, high: 500_000 });
     expect(result.duplicateAssetIds).toEqual(['fund']);
     expect(result.unallocatedAssets).toEqual(['bank']);
+  });
+
+  it('canonicalizes legacy bare asset IDs against unique namespaced holdings', () => {
+    const result = allocateGoalAssets([
+      goal({ id: 'high', priority: 1, linkedAssetIds: ['sip:fund', 'fund'] }),
+      goal({ id: 'low', priority: 2, linkedAssetIds: ['fund'] }),
+    ], { 'sip:fund': 500_000, fund: 500_000, cash: 100_000 });
+    expect(result.allocatedByGoal).toEqual({ high: 500_000, low: 0 });
+    expect(result.duplicateAssetIds).toEqual(['fund']);
+    expect(result.unallocatedAssets).toEqual(['cash']);
   });
 });
