@@ -1,6 +1,7 @@
 import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, fiProgress } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
+import { assessInsuranceNeeds, goalShortfallForInsurance, safeInsuranceSum } from '../insurance/insurance-planning';
 
 export interface HealthAssessment {
   status: 'green' | 'yellow' | 'red';
@@ -19,6 +20,9 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   const fi = fiProgress(state);
   // Default assumptions for missing values to avoid crashes
   const annualIncome = state.profile.monthlyIncome ? state.profile.monthlyIncome * 12 : 0;
+  const safety = portfolioSafetyReport(state);
+  const outstandingDebt = safeInsuranceSum(Object.values(state.liabilities ?? {}).map((liability) => Math.max(0, liability.amount || 0)));
+  const futureGoalShortfall = goalShortfallForInsurance(state);
   
   // Dimensions
   let fiStatus: 'green' | 'yellow' | 'red' = 'green';
@@ -39,15 +43,29 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   let protectionStatus: 'green' | 'yellow' | 'red' = 'green';
   let protectionDetail = 'Insurance coverage adequate.';
   const ins = state.insurance;
-  if (!ins || (ins.termLife.currentCover === 0 && ins.health.currentCover === 0)) {
+  const insuranceNeeds = ins ? assessInsuranceNeeds({
+    annualIncome,
+    dependents: Math.max(0, ins.health.familySize - 1),
+    outstandingDebt,
+    futureGoalShortfall,
+    accessibleAssets: safety.liquidity.status === 'available' ? safety.liquidity.accessibleValue : null,
+    familySize: ins.health.familySize,
+    currentTermCover: ins.termLife.currentCover,
+    currentHealthCover: ins.health.currentCover,
+    legacyTermExpiryDate: ins.termLife.expiryDate,
+    legacyHealthExpiryDate: ins.health.expiryDate,
+    policies: ins.policies,
+  }) : null;
+  if (!ins || (insuranceNeeds?.currentTermCover === 0 && insuranceNeeds.currentHealthCover === 0)) {
     protectionStatus = 'red';
     protectionDetail = 'No insurance data configured.';
-  } else {
-    const requiredTerm = Math.max(annualIncome * 10, 10000000);
-    const requiredHealth = ins.health.familySize <= 2 ? 2000000 : 5000000;
-    if (ins.termLife.currentCover < requiredTerm || ins.health.currentCover < requiredHealth) {
+  } else if (insuranceNeeds) {
+    if (insuranceNeeds.status === 'insufficient-data') {
       protectionStatus = 'yellow';
-      protectionDetail = `Insurance gap detected. Need term cover of ₹${Math.round(requiredTerm / 100000)}L and health cover of ₹${Math.round(requiredHealth / 100000)}L.`;
+      protectionDetail = 'Refresh debt, goal and accessible-asset data before relying on the insurance gap.';
+    } else if (insuranceNeeds.termGap !== null && (insuranceNeeds.termGap > 0 || insuranceNeeds.healthGap > 0)) {
+      protectionStatus = 'yellow';
+      protectionDetail = `Insurance gap detected. Need term cover of ₹${Math.round((insuranceNeeds.requiredTermCover ?? 0) / 100000)}L and health cover of ₹${Math.round(insuranceNeeds.requiredHealthCover / 100000)}L.`;
     }
   }
 
@@ -73,7 +91,7 @@ export function assessHealth(state: FireOSState): HealthAssessment {
     savingsDetail = 'No income data configured.';
   }
 
-  const liquidity = portfolioSafetyReport(state).liquidity;
+  const liquidity = safety.liquidity;
   let liquidityStatus: 'green' | 'yellow' | 'red' = 'yellow';
   let liquidityDetail = 'Liquidity is not fully assessable yet.';
   if (liquidity.status === 'available' && liquidity.runwayMonths !== null) {

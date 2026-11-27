@@ -2,6 +2,7 @@ import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, floatIndicator } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 import { planGoal } from './goal-planning';
+import { assessInsuranceNeeds, goalShortfallForInsurance, safeInsuranceSum } from '../insurance/insurance-planning';
 import { formatCurrency } from '../../lib/formatters';
 
 function escapeHtml(value: string): string {
@@ -68,7 +69,20 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
   // 3 & 4. Insurance (urgent / this-month)
   const ins = state.insurance;
   const annualIncome = state.profile.monthlyIncome ? state.profile.monthlyIncome * 12 : 0;
-  if (!ins || (ins.termLife.currentCover === 0 && ins.health.currentCover === 0)) {
+  const insuranceNeeds = ins ? assessInsuranceNeeds({
+    annualIncome,
+    dependents: Math.max(0, ins.health.familySize - 1),
+    outstandingDebt: safeInsuranceSum(Object.values(state.liabilities ?? {}).map((liability) => Math.max(0, liability.amount || 0))),
+    futureGoalShortfall: goalShortfallForInsurance(state),
+    accessibleAssets: portfolioSafetyReport(state).liquidity.status === 'available' ? portfolioSafetyReport(state).liquidity.accessibleValue : null,
+    familySize: ins.health.familySize,
+    currentTermCover: ins.termLife.currentCover,
+    currentHealthCover: ins.health.currentCover,
+    legacyTermExpiryDate: ins.termLife.expiryDate,
+    legacyHealthExpiryDate: ins.health.expiryDate,
+    policies: ins.policies,
+  }) : null;
+  if (!ins || (insuranceNeeds?.currentTermCover === 0 && insuranceNeeds.currentHealthCover === 0)) {
     addAction({
       id: 'insurance-missing',
       priority: 'urgent',
@@ -77,12 +91,10 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
       description: 'Set up your insurance data in the Insurance tab to evaluate your protection.',
     });
   } else {
-    const requiredTerm = Math.max(annualIncome * 10, 10000000);
-    const requiredHealth = ins.health.familySize <= 2 ? 2000000 : 5000000;
-    
     let gaps = [];
-    if (ins.termLife.currentCover < requiredTerm) gaps.push(`term gap ₹${Math.round((requiredTerm - ins.termLife.currentCover) / 100000)}L`);
-    if (ins.health.currentCover < requiredHealth) gaps.push(`health gap ₹${Math.round((requiredHealth - ins.health.currentCover) / 100000)}L`);
+    if (insuranceNeeds?.status === 'insufficient-data') gaps.push('term gap requires refreshed debt, goal and accessible-asset data');
+    else if (insuranceNeeds?.termGap && insuranceNeeds.termGap > 0) gaps.push(`term gap ₹${Math.round(insuranceNeeds.termGap / 100000)}L`);
+    if (insuranceNeeds?.healthGap && insuranceNeeds.healthGap > 0) gaps.push(`health gap ₹${Math.round(insuranceNeeds.healthGap / 100000)}L`);
     
     if (gaps.length > 0) {
       addAction({

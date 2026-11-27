@@ -259,11 +259,13 @@ above for displayed behavior.
 
 ### Insurance — `src/modules/insurance/`
 
-Captures term cover/premium and health cover/premium/family size. The
-`insurance.term.expiryDate`, `insurance.term.provider`, `insurance.health.provider`
-and `insurance.vehicle` fields exist in state and validators but have no UI
-input. No insurance quote API is present. Health assessment and action-engine
-thresholds are described under Plan below.
+Captures term and health cover/premium/family size plus provider and expiry
+metadata. Optional policy records support employer/personal ownership,
+deductibles, health top-ups, dependents, waiting periods and exclusions. The
+planner aggregates active policies, excludes expired cover, surfaces renewal
+windows, and calculates transparent household-assumption gaps; it does not
+make a universal coverage recommendation. No insurance quote API is present.
+Health assessment and action-engine thresholds are described under Plan below.
 
 ### Plan — `src/modules/plan/`
 

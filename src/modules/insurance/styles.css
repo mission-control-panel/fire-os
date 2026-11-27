@@ -111,3 +111,25 @@
   outline: none;
   border-color: var(--brand-primary);
 }
+
+.insurance-policy-lifecycle {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  color: var(--text-secondary);
+}
+
+.insurance-policy-lifecycle h3 {
+  margin: 0 0 0.75rem;
+  color: var(--text-primary);
+}
+
+.insurance-policy-lifecycle ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.insurance-assumptions {
+  font-size: 0.875rem;
+}
