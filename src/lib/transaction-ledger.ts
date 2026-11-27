@@ -230,15 +230,33 @@ function coerceCsvRow(row: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
-function ledgerMetadata(value: Record<string, unknown>): LedgerImportPreview['metadata'] | undefined {
-  if (!['accounts', 'instruments', 'lots', 'liabilities'].some((key) => key in value)) return undefined;
-  if (!value.accounts || !value.instruments || !value.lots || !value.liabilities || !Array.isArray(value.lots) || !Array.isArray(value.liabilities)) return undefined;
-  return {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key));
+}
+
+function ledgerMetadata(value: Record<string, unknown>): { metadata?: LedgerImportPreview['metadata']; error?: string } {
+  if (!['accounts', 'instruments', 'lots', 'liabilities'].some((key) => key in value)) return {};
+  if (!isRecord(value.accounts) || !isRecord(value.instruments) || !Array.isArray(value.lots) || !Array.isArray(value.liabilities)
+    || value.lots.length > MAX_LEDGER_ROWS || value.liabilities.length > 50) return { error: 'Import metadata is malformed' };
+  const validAccounts = Object.entries(value.accounts).every(([key, account]) => isRecord(account) && hasExactKeys(account, ['id', 'name', 'currency'])
+    && key.length <= 100 && typeof account.id === 'string' && account.id.length <= 100 && typeof account.name === 'string' && account.name.length <= 200 && typeof account.currency === 'string' && account.currency.length <= 10);
+  const validInstruments = Object.entries(value.instruments).every(([key, instrument]) => isRecord(instrument) && hasExactKeys(instrument, ['id', 'name', 'assetClass', 'currency'])
+    && key.length <= 100 && typeof instrument.id === 'string' && instrument.id.length <= 100 && typeof instrument.name === 'string' && instrument.name.length <= 200 && typeof instrument.assetClass === 'string' && instrument.assetClass.length <= 50 && typeof instrument.currency === 'string' && instrument.currency.length <= 10);
+  const validLots = value.lots.every((lot) => isRecord(lot) && hasExactKeys(lot, ['id', 'transactionId', 'accountId', 'instrumentId', 'acquiredDate', 'quantityMicros', 'costPaise', 'costProvenance'])
+    && typeof lot.id === 'string' && lot.id.length <= 150 && typeof lot.transactionId === 'string' && lot.transactionId.length <= 150 && typeof lot.accountId === 'string' && lot.accountId.length <= 100 && typeof lot.instrumentId === 'string' && lot.instrumentId.length <= 100 && normaliseDate(lot.acquiredDate) !== null && isSafeInteger(lot.quantityMicros) && (lot.quantityMicros as number) >= 0 && isSafeInteger(lot.costPaise) && (lot.costPaise as number) >= 0 && PROVENANCE.has(lot.costProvenance as CostProvenance));
+  const validLiabilities = value.liabilities.every((liability) => isRecord(liability) && hasExactKeys(liability, ['id', 'name', 'balancePaise', 'currency'])
+    && typeof liability.id === 'string' && liability.id.length <= 100 && typeof liability.name === 'string' && liability.name.length <= 200 && isSafeInteger(liability.balancePaise) && (liability.balancePaise as number) >= 0 && typeof liability.currency === 'string' && liability.currency.length <= 10);
+  if (!validAccounts || !validInstruments || !validLots || !validLiabilities) return { error: 'Import metadata is malformed' };
+  return { metadata: {
     accounts: value.accounts as TransactionLedger['accounts'],
     instruments: value.instruments as TransactionLedger['instruments'],
     lots: value.lots as TransactionLedger['lots'],
     liabilities: value.liabilities as TransactionLedger['liabilities'],
-  };
+  } };
 }
 
 export function previewLedgerImport(input: string | unknown, existing: TransactionLedger = createTransactionLedger()): LedgerImportPreview {
@@ -251,13 +269,17 @@ export function previewLedgerImport(input: string | unknown, existing: Transacti
       if (Array.isArray(parsed)) rawRows = parsed;
       else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.transactions)) {
         rawRows = parsed.transactions;
-        metadata = ledgerMetadata(parsed);
+      const metadataResult = ledgerMetadata(parsed);
+      metadata = metadataResult.metadata;
+      if (metadataResult.error) return { schemaVersion: LEDGER_SCHEMA_VERSION, rows: [], validRows: [], errors: [metadataResult.error], duplicateCount: 0, metadata };
       } else rawRows = parseCsv(input).map(coerceCsvRow);
     } else if (Array.isArray(input)) {
       rawRows = input;
     } else if (input && typeof input === 'object' && Array.isArray((input as { transactions?: unknown[] }).transactions)) {
       rawRows = (input as { transactions: unknown[] }).transactions;
-      metadata = ledgerMetadata(input as Record<string, unknown>);
+      const metadataResult = ledgerMetadata(input as Record<string, unknown>);
+      metadata = metadataResult.metadata;
+      if (metadataResult.error) return { schemaVersion: LEDGER_SCHEMA_VERSION, rows: [], validRows: [], errors: [metadataResult.error], duplicateCount: 0, metadata };
     } else {
       rawRows = [];
     }

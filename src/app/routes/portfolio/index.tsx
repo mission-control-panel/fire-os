@@ -60,12 +60,17 @@ export function PortfolioWorkspace() {
     if (account.trim().length > MAX_ENTITY_NAME_LENGTH || instrument.trim().length > MAX_ENTITY_NAME_LENGTH) {
       setMessage(`Account and instrument names must be ${MAX_ENTITY_NAME_LENGTH} characters or fewer.`); return;
     }
+    if (note.length > 1000) {
+      setMessage('Notes must be 1,000 characters or fewer.'); return;
+    }
     if (quantityMicros !== undefined && (!Number.isSafeInteger(quantityMicros) || quantityMicros < 0)) {
       setMessage('Quantity must be a non-negative finite number.'); return;
     }
     const accountId = stableId(account, 'account');
     const instrumentId = instrument.trim() ? stableId(instrument, 'instrument') : undefined;
-    const transactionBase = { id: `manual-${Date.now()}`, date, type, accountId, instrumentId, amountPaise, quantityMicros, linkedTransactionId: undefined } as const;
+    let transactionId = `manual-${Date.now()}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+    while (ledger.transactions.some((transaction) => transaction.id === transactionId)) transactionId = `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const transactionBase = { id: transactionId, date, type, accountId, instrumentId, amountPaise, quantityMicros, linkedTransactionId: undefined } as const;
     const transaction = { ...transactionBase, dedupKey: transactionDedupKey(transactionBase), costProvenance: 'exact' as const, ...(note.trim() ? { note: note.trim() } : {}) };
     const next = {
       ...ledger,

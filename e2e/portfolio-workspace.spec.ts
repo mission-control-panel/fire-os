@@ -58,5 +58,12 @@ test.describe('portfolio workspace', () => {
     await expect(
       page.getByRole('status').filter({ hasText: '80 characters or fewer' }),
     ).toBeVisible();
+
+    await page.locator('#ledger-account').fill('HDFC Bank');
+    await page.locator('#ledger-note').fill('N'.repeat(1001));
+    await page.getByRole('button', { name: 'Save transaction' }).click();
+    await expect(
+      page.getByRole('status').filter({ hasText: '1,000 characters or fewer' }),
+    ).toBeVisible();
   });
 });

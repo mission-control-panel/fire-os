@@ -48,6 +48,15 @@ describe('transaction ledger', () => {
     expect(reconcileLedger(applied)).toEqual([]);
   });
 
+  it('rejects malformed replacement metadata before applying it', () => {
+    const preview = previewLedgerImport({
+      accounts: { brokerage: { id: 'brokerage', name: 'Brokerage', currency: 'INR', unexpected: true } },
+      instruments: {}, lots: [], liabilities: [], transactions: [],
+    });
+    expect(preview.errors).toContain('Import metadata is malformed');
+    expect(() => applyLedgerImport(createTransactionLedger(), preview, 'replace')).toThrow('Cannot apply invalid import');
+  });
+
   it('keeps same-day transactions distinct and consumes FIFO cost on sale', () => {
     const ledger = createTransactionLedger();
     const preview = previewLedgerImport([
