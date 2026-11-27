@@ -106,7 +106,7 @@ function validWatchdogRules(value) {
 
     function validEsopDetails(value) {
       return value is map
-        && value.keys().hasOnly(['shares', 'holdings', 'grantPrice', 'liquidationShares', 'vestingFmv', 'currentPrice', 'slabRate', 'vestingSchedule', 'holdingPeriodYears'])
+        && value.keys().hasOnly(['shares', 'holdings', 'grantPrice', 'liquidationShares', 'vestingFmv', 'currentPrice', 'slabRate', 'vestingSchedule', 'holdingPeriodYears', 'grants'])
         && value.shares is number
         && (!('holdings' in value) || (value.holdings is list && value.holdings.size() <= 20))
         && value.grantPrice is number
@@ -115,7 +115,38 @@ function validWatchdogRules(value) {
         && (!('currentPrice' in value) || value.currentPrice is number)
         && (!('slabRate' in value) || value.slabRate is number)
         && (!('holdingPeriodYears' in value) || value.holdingPeriodYears is number)
-        && isBoundedList(value.vestingSchedule, 200);
+        && isBoundedList(value.vestingSchedule, 200)
+        && (!('grants' in value) || validEquityGrantList(value.grants));
+    }
+
+    function validEquityGrantList(value) {
+      // Firestore Rules cannot iterate list members. The bounded slots keep
+      // this explicit validation within the evaluator expression budget.
+      return isBoundedList(value, 1)
+        && (value.size() <= 0 || validEquityGrant(value[0]));
+    }
+
+    function validEquityGrant(value) {
+      return value is map
+        && value.keys().hasOnly(['id', 'kind', 'symbol', 'currency', 'grantedQuantity', 'vestedQuantity', 'exercisedQuantity', 'soldQuantity', 'strikePrice', 'fairMarketValue', 'valuationAsOf', 'fxToInr', 'fxAsOf', 'taxRate', 'grantDate', 'vestingDate'])
+        && value.id is string && value.id.size() > 0 && value.id.size() <= 100
+        && value.kind in ['esop', 'rsu', 'espp', 'acquired']
+        && value.symbol is string && value.symbol.size() <= 30
+        && value.currency is string && value.currency.size() <= 10
+        && value.grantedQuantity is number && value.grantedQuantity >= 0 && value.grantedQuantity <= 1000000000000
+        && value.vestedQuantity is number && value.vestedQuantity >= 0 && value.vestedQuantity <= 1000000000000
+        && value.exercisedQuantity is number && value.exercisedQuantity >= 0 && value.exercisedQuantity <= 1000000000000
+        && value.soldQuantity is number && value.soldQuantity >= 0 && value.soldQuantity <= 1000000000000
+        && value.strikePrice is number && value.strikePrice >= 0 && value.strikePrice <= 1000000000000
+        && value.fairMarketValue is number && value.fairMarketValue >= 0 && value.fairMarketValue <= 1000000000000
+        && value.vestedQuantity <= value.grantedQuantity
+        && value.exercisedQuantity + value.soldQuantity <= value.vestedQuantity
+        && (!('valuationAsOf' in value) || (value.valuationAsOf is string && value.valuationAsOf.size() <= 20))
+        && (!('fxToInr' in value) || (value.fxToInr is number && value.fxToInr > 0 && value.fxToInr <= 1000000000000))
+        && (!('fxAsOf' in value) || (value.fxAsOf is string && value.fxAsOf.size() <= 20))
+        && (!('taxRate' in value) || (value.taxRate is number && value.taxRate >= 0 && value.taxRate <= 1))
+        && (!('grantDate' in value) || (value.grantDate is string && value.grantDate.size() <= 20))
+        && (!('vestingDate' in value) || (value.vestingDate is string && value.vestingDate.size() <= 20));
     }
 
     function validTransactionLedger(value) {

@@ -578,6 +578,22 @@ input:checked + .slider:before {
   margin: 0;
 }
 
+.equity-lifecycle-card { margin-bottom: var(--spacing-lg); }
+.equity-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--spacing-md); margin-bottom: var(--spacing-lg); }
+.equity-summary-grid div { background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: var(--spacing-md); }
+.equity-summary-grid span, .equity-grant-row span { display: block; color: var(--text-secondary); font-size: var(--font-size-xs); }
+.equity-summary-grid strong { display: block; margin-top: var(--spacing-xs); color: var(--text-primary); }
+.equity-grant-list { display: grid; gap: var(--spacing-sm); margin-bottom: var(--spacing-lg); }
+.equity-grant-row { display: flex; justify-content: space-between; gap: var(--spacing-md); align-items: center; background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: var(--border-radius-md); padding: var(--spacing-sm) var(--spacing-md); }
+.equity-grant-row > div:last-child { text-align: right; }
+.equity-status.current { color: var(--status-good-text); }
+.equity-status.stale, .equity-status.missing { color: var(--status-warn-text); }
+.equity-grant-form { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--spacing-sm); align-items: end; }
+.equity-grant-form label { display: grid; gap: 4px; color: var(--text-secondary); font-size: var(--font-size-xs); }
+.equity-grant-form input, .equity-grant-form select { min-width: 0; padding: 8px; border: 1px solid var(--border-primary); border-radius: var(--border-radius-sm); background: var(--bg-primary); color: var(--text-primary); }
+.equity-assumptions { color: var(--text-tertiary); font-size: var(--font-size-xs); margin: var(--spacing-md) 0 0; }
+@media (max-width: 760px) { .equity-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .equity-grant-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }

@@ -111,6 +111,28 @@ export interface EsopHolding {
   currency: string;
 }
 
+/** Employee-equity instrument tracked separately from legacy aggregate holdings. */
+export type EquityInstrumentKind = 'esop' | 'rsu' | 'espp' | 'acquired';
+
+export interface EquityGrant {
+  id: string;
+  kind: EquityInstrumentKind;
+  symbol: string;
+  currency: string;
+  grantedQuantity: number;
+  vestedQuantity: number;
+  exercisedQuantity: number;
+  soldQuantity: number;
+  strikePrice: number;
+  fairMarketValue: number;
+  valuationAsOf?: string;
+  fxToInr?: number;
+  fxAsOf?: string;
+  taxRate?: number;
+  grantDate?: string;
+  vestingDate?: string;
+}
+
 /**
  * A user-defined fund watchdog rule: a named holding plus optional thresholds to
  * watch. All thresholds are optional; a rule with none set never fires.
@@ -145,6 +167,8 @@ export interface EsopDetails {
    * product milestone year.
    */
   holdingPeriodYears?: number;
+  /** Detailed grants are optional so existing aggregate ESOP records remain valid. */
+  grants?: EquityGrant[];
 }
 
 /** Complete global application state */
@@ -300,6 +324,7 @@ export const PERSISTED_STATE_KEYS = [
 ] as const;
 
 const finiteNumberSchema = z.number();
+const equityNumberSchema = finiteNumberSchema.min(0).max(1_000_000_000_000);
 const safeIntegerSchema = z.number().refine(Number.isSafeInteger, { message: 'Expected a safe integer.' });
 const ledgerDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => Number.isFinite(Date.parse(`${value}T00:00:00Z`)));
 const timestampSchema = z.string().refine((value) => Number.isFinite(Date.parse(value)));
@@ -451,6 +476,18 @@ const persistedPortfolioShape = {
     currentPrice: finiteNumberSchema.optional(), slabRate: finiteNumberSchema.optional(),
     vestingSchedule: z.array(z.strictObject({ date: z.string(), shares: finiteNumberSchema })),
     holdingPeriodYears: finiteNumberSchema.min(0).max(50).optional(),
+    grants: z.array(z.strictObject({
+      id: z.string().min(1).max(100), kind: z.enum(['esop', 'rsu', 'espp', 'acquired']),
+      symbol: z.string().max(30), currency: z.string().max(10),
+      grantedQuantity: equityNumberSchema, vestedQuantity: equityNumberSchema,
+      exercisedQuantity: equityNumberSchema, soldQuantity: equityNumberSchema,
+      strikePrice: equityNumberSchema, fairMarketValue: equityNumberSchema,
+      valuationAsOf: z.string().optional(), fxToInr: equityNumberSchema.positive().optional(),
+      fxAsOf: z.string().optional(), taxRate: finiteNumberSchema.min(0).max(1).optional(),
+      grantDate: z.string().optional(), vestingDate: z.string().optional(),
+    })).max(1).refine((grants) => new Set(grants.map((grant) => grant.id)).size === grants.length, {
+      message: 'Employee-equity grant IDs must be unique.',
+    }).optional(),
   })),
   liquidationRules: exactOptional(z.array(liquidationRuleSchema).max(50)),
   assistant: exactOptional(z.strictObject({ sendExactFigures: z.boolean() })),
@@ -618,6 +655,7 @@ export function initializeState(): FireOSState {
       vestingFmv: 0,
       slabRate: 30,
       vestingSchedule: [],
+      grants: [],
     },
 
     // General ESOP liquidation rules (default milestone vocabulary)

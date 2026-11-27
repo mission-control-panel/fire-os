@@ -305,6 +305,18 @@ per rule and goal allocations deploy sequentially from remaining corpus.
 `esopDetails.vestingSchedule` is persisted and validated but is no longer
 rendered or edited anywhere. Quotes come
 from Yahoo Finance via the Worker `/api/market/quote` endpoint; FX converts to
+
+Optional detailed grants record the instrument kind (ESOP option, RSU, ESPP, or
+acquired shares), symbol, granted/vested/exercised/sold quantities, strike/cost,
+fair-market value, valuation date, currency and optional tax/FX assumptions.
+The synced detailed-grant contract intentionally accepts one record; additional
+legacy ESOP positions remain supported through the existing holdings collection.
+The lifecycle planner distinguishes available, partially vested, unvested and
+exhausted quantities. Stale or missing manual prices remain unavailable rather
+than becoming zero. Concentration is a read-only ratio against supplied net
+assets for the detailed grant only, and the goal-liquidation figure is capped by
+the current goal shortfall; neither scenario changes real holdings or implies a
+recommendation for legacy aggregate positions.
 INR. Value = quantity × quote ×
 INR rate. There is no manual holding valuation path: a failed quote or missing
 FX rate renders as unavailable. Stock quote freshness is 15 minutes.

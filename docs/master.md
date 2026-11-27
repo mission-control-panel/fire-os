@@ -119,8 +119,9 @@ allowlisted by `PERSISTED_STATE_KEYS`. Major sections: `profile`; MF and SIP
 fund maps; FD, EPF, ESOP, bonds, custom assets, liabilities and demat; NAV/Nifty/
 FX caches; benchmark tracker; general planning `goals`; fund watchdog inputs; SWP
 and tax calendar; expenses; net-worth history; completed actions and milestones;
-insurance; ESOP detail/vesting and `liquidationRules` (general ESOP liquidation
-rules replacing the old fixed trigger enum); Assistant preferences
+insurance; ESOP detail/vesting, optional typed employee-equity grants and
+`liquidationRules` (general ESOP liquidation rules replacing the old fixed
+trigger enum); Assistant preferences
 (`assistant.sendExactFigures`, opt-in and false by default); and `marketHistory`,
 a bounded local cache of market series. `currentUser`, `_lastSavedAt`, and
 `_syncMetadata` are runtime-only. `persistedPortfolioSchema` (Zod) and
@@ -298,7 +299,17 @@ with a default of 0 when not set. Read [UI](ui.md) for tab-level logic and addit
   provided.
 - **Plan** (`src/modules/plan/`): health score, action list, milestones,
   cashflow and history-oriented planning.
-- **ESOP Tools** (`src/modules/esop/`): vesting, liquidation rules and quoted valuation.
+- **ESOP Tools** (`src/modules/esop/`): legacy quoted valuation and liquidation
+  rules plus optional typed grant lifecycle planning for ESOP options, RSUs,
+  ESPP and acquired shares. Grant planning separates vested, available and
+  restricted quantities, rejects inconsistent quantities, and fails closed for
+  stale or missing manual valuations. The synced detailed-grant contract is
+  intentionally bounded to one record because Firestore Rules expression
+  budgets cannot safely iterate arbitrary grant lists; the legacy holdings
+  collection remains available for additional positions; the new scenario
+  metrics are explicitly detailed-grant-only. Concentration and
+  liquidation-to-goal figures are read-only scenarios; they never mutate
+  holdings.
 - **Assistant** (`src/modules/assistant/`): consent-aware chat, proposal review,
   reauthentication for sensitive changes, local audit and undo.
 - **Other shared UI** (`src/modules/ui/`): native dialog wrapper and the
