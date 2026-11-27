@@ -52,11 +52,12 @@ export function planGoal(
   const months = monthsUntil(goal.targetDate, today);
   const years = Math.max(0, months) / 12;
   const targetAtDate = goal.targetToday * (1 + inflationRate) ** years;
-  const shortfallAtDate = Math.max(0, targetAtDate - goal.currentAmount);
+  const monthlyRate = (1 + annualReturnRate) ** (1 / 12) - 1;
+  const growth = (1 + monthlyRate) ** Math.max(0, months);
+  const futureCurrentAmount = goal.currentAmount * growth;
+  const shortfallAtDate = Math.max(0, targetAtDate - futureCurrentAmount);
   if (shortfallAtDate === 0) return { targetAtDate, monthsRemaining: months, shortfallAtDate, requiredMonthlyContribution: 0, contributionGap: 0, status: 'reached' };
   if (months <= 0) return { targetAtDate, monthsRemaining: months, shortfallAtDate, requiredMonthlyContribution: null, contributionGap: null, status: 'overdue' };
-  const monthlyRate = (1 + annualReturnRate) ** (1 / 12) - 1;
-  const growth = (1 + monthlyRate) ** months;
   const requiredMonthlyContribution = monthlyRate === 0
     ? shortfallAtDate / months
     : shortfallAtDate * monthlyRate / (growth - 1);

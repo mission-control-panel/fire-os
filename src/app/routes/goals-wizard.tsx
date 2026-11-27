@@ -21,7 +21,7 @@ import {
 } from '../ui';
 import { GoalForm } from './goal-form';
 import type { Goal, GoalKind } from '../../types/state';
-import { planGoal } from '../../modules/plan/goal-planning';
+import { allocateGoalAssets, planGoal } from '../../modules/plan/goal-planning';
 
 const KIND_LABELS: Record<GoalKind, string> = {
   fi: 'Financial Independence',
@@ -54,6 +54,18 @@ export function GoalsRoute() {
   const [creating, setCreating] = useState(false);
 
   const dialogOpen = creating || editing !== null;
+  const assetEntries: Array<[string, number]> = [
+    ...Object.entries(appState.sip).map(([id, fund]) => [id, fund.units * (appState.nav[fund.schemeCode ?? '']?.nav ?? 0)] as [string, number]),
+    ...Object.entries(appState.mf).map(([id, fund]) => [id, fund.units * (appState.nav[fund.schemeCode ?? '']?.nav ?? 0)] as [string, number]),
+    ...Object.entries(appState.fd).map(([id, holding]) => [id, holding.amount] as [string, number]),
+    ...Object.entries(appState.epf).map(([id, holding]) => [id, holding.amount] as [string, number]),
+    ...Object.entries(appState.esop).map(([id, holding]) => [id, holding.amount] as [string, number]),
+    ...Object.entries(appState.bonds).map(([id, holding]) => [id, holding.amount] as [string, number]),
+    ...Object.entries(appState.demat).map(([id, holding]) => [id, holding.currentValue] as [string, number]),
+    ...Object.entries(appState.otherHoldings).map(([id, holding]) => [id, holding.amount] as [string, number]),
+  ].filter(([, value]) => Number.isFinite(value) && value > 0);
+  const assetValues = Object.fromEntries(assetEntries);
+  const allocation = allocateGoalAssets(goals, assetValues);
 
   const closeDialog = () => {
     setCreating(false);
@@ -107,7 +119,13 @@ export function GoalsRoute() {
           </div>
         </Card>
       ) : (
-        <Card className="p-0">
+        <>
+          {allocation.duplicateAssetIds.length > 0 ? (
+            <p role="status" className="rounded-md border border-(--color-border) bg-(--color-muted) p-3 text-sm text-(--color-foreground)">
+              {allocation.duplicateAssetIds.length} linked asset{allocation.duplicateAssetIds.length === 1 ? '' : 's'} overlap between goals; priority order assigns each asset once.
+            </p>
+          ) : null}
+          <Card className="p-0">
           {/* Table already scrolls horizontally; the min-width stops the name
               column being crushed to two words before the scroll kicks in. */}
           <Table className="min-w-[46rem]">
@@ -125,7 +143,9 @@ export function GoalsRoute() {
             </TableHead>
             <TableBody>
               {goals.map((goal) => {
-                const plan = planGoal(goal);
+                const allocatedValue = allocation.allocatedByGoal[goal.id] ?? 0;
+                const planningGoal = allocatedValue > 0 ? { ...goal, currentAmount: goal.currentAmount + allocatedValue } : goal;
+                const plan = planGoal(planningGoal);
                 const displayedTarget = plan.targetAtDate || goal.targetToday;
                 const progress = displayedTarget > 0 ? Math.max(0, Math.min(100, (goal.currentAmount / displayedTarget) * 100)) : progressOf(goal);
                 const shortfall = plan.status === 'missing-data' ? Math.max(0, goal.targetToday - goal.currentAmount) : plan.shortfallAtDate;
@@ -139,6 +159,7 @@ export function GoalsRoute() {
                       <span className="block text-xs text-(--color-muted-foreground)">
                         {KIND_LABELS[goal.kind]} · Priority {goal.priority} · {goal.riskBucket} risk
                       </span>
+                      {allocatedValue > 0 ? <span className="block text-xs text-(--color-muted-foreground)">Includes {formatCurrency(allocatedValue, 0)} of linked assets</span> : null}
                       <span className="block text-xs text-(--color-muted-foreground)">
                         {plan.status === 'missing-data'
                           ? 'Missing planning inputs'
@@ -200,7 +221,8 @@ export function GoalsRoute() {
               })}
             </TableBody>
           </Table>
-        </Card>
+          </Card>
+        </>
       )}
 
       <Dialog

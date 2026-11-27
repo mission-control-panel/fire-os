@@ -16,6 +16,14 @@ describe('goal planning', () => {
     expect(plan.status).toBe('underfunded');
   });
 
+  it('grows the existing corpus before calculating the remaining contribution', () => {
+    const plan = planGoal(goal({ currentAmount: 100_000 }), { today: new Date('2026-01-01T00:00:00Z'), annualReturnRate: 0.12 });
+    const monthlyRate = 1.12 ** (1 / 12) - 1;
+    const futureCorpus = 100_000 * (1 + monthlyRate) ** 48;
+    const target = 1_000_000 * 1.06 ** 4;
+    expect(plan.shortfallAtDate).toBeCloseTo(target - futureCorpus);
+  });
+
   it('makes overdue and missing inputs explicit', () => {
     expect(planGoal(goal({ targetDate: '2025-01' }), { today: new Date('2026-01-01T00:00:00Z') }).status).toBe('overdue');
     expect(planGoal(goal({ targetDate: '2030-13' }), { today: new Date('2026-01-01T00:00:00Z') }).status).toBe('missing-data');
