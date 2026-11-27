@@ -21,6 +21,7 @@ import {
 } from '../ui';
 import { GoalForm } from './goal-form';
 import type { Goal, GoalKind } from '../../types/state';
+import { allocateGoalAssets, planGoal } from '../../modules/plan/goal-planning';
 
 const KIND_LABELS: Record<GoalKind, string> = {
   fi: 'Financial Independence',
@@ -53,6 +54,28 @@ export function GoalsRoute() {
   const [creating, setCreating] = useState(false);
 
   const dialogOpen = creating || editing !== null;
+  const assetEntries: Array<[string, number]> = [];
+  const addAsset = (kind: string, id: string, value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return;
+    assetEntries.push([`${kind}:${id}`, value]);
+  };
+  const currentNavValue = (schemeCode: string | undefined): number => {
+    const nav = schemeCode ? appState.nav[schemeCode] : undefined;
+    if (!nav || !Number.isFinite(nav.nav) || nav.nav <= 0 || nav.status === 'stale') return 0;
+    const timestamp = Date.parse(nav.timestamp);
+    if (!Number.isFinite(timestamp) || timestamp > Date.now() || Date.now() - timestamp > nav.ttl) return 0;
+    return nav.nav;
+  };
+  Object.entries(appState.sip).forEach(([id, fund]) => addAsset('sip', id, fund.units * currentNavValue(fund.schemeCode)));
+  Object.entries(appState.mf).forEach(([id, fund]) => addAsset('mf', id, fund.units * currentNavValue(fund.schemeCode)));
+  Object.entries(appState.fd).forEach(([id, holding]) => addAsset('fd', id, holding.amount));
+  Object.entries(appState.epf).forEach(([id, holding]) => addAsset('epf', id, holding.amount));
+  Object.entries(appState.esop).forEach(([id, holding]) => addAsset('esop', id, holding.amount));
+  Object.entries(appState.bonds).forEach(([id, holding]) => addAsset('bonds', id, holding.amount));
+  Object.entries(appState.demat).forEach(([id, holding]) => addAsset('demat', id, holding.currentValue));
+  Object.entries(appState.otherHoldings).forEach(([id, holding]) => addAsset('other', id, holding.amount));
+  const assetValues = Object.fromEntries(assetEntries);
+  const allocation = allocateGoalAssets(goals, assetValues);
 
   const closeDialog = () => {
     setCreating(false);
@@ -71,8 +94,9 @@ export function GoalsRoute() {
 
   const handleDelete = (id: string) => {
     const next = goals.filter((g) => g.id !== id);
-    setGoals(next);
     appState.goals = next;
+    persistPortfolioState(appState, { sync: false });
+    setGoals(next);
   };
 
   return (
@@ -106,7 +130,18 @@ export function GoalsRoute() {
           </div>
         </Card>
       ) : (
-        <Card className="p-0">
+        <>
+          {allocation.duplicateAssetIds.length > 0 ? (
+            <p role="status" className="rounded-md border border-(--color-border) bg-(--color-muted) p-3 text-sm text-(--color-foreground)">
+              {allocation.duplicateAssetIds.length} linked asset{allocation.duplicateAssetIds.length === 1 ? '' : 's'} overlap between goals; priority order assigns each asset once.
+            </p>
+          ) : null}
+          {allocation.invalidAssetIds.length > 0 ? (
+            <p role="status" className="rounded-md border border-(--color-border) bg-(--color-muted) p-3 text-sm text-(--color-foreground)">
+              Some linked assets exceed the safe planning range and were excluded until their values are reviewed.
+            </p>
+          ) : null}
+          <Card className="p-0">
           {/* Table already scrolls horizontally; the min-width stops the name
               column being crushed to two words before the scroll kicks in. */}
           <Table className="min-w-[46rem]">
@@ -124,9 +159,14 @@ export function GoalsRoute() {
             </TableHead>
             <TableBody>
               {goals.map((goal) => {
-                const progress = progressOf(goal);
-                const shortfall = Math.max(0, goal.targetToday - goal.currentAmount);
-                const months = monthsRemaining(goal.targetDate);
+                const allocatedValue = allocation.allocatedByGoal[goal.id] ?? 0;
+                const planningGoal = allocatedValue > 0 ? { ...goal, currentAmount: goal.currentAmount + allocatedValue } : goal;
+                const plan = planGoal(planningGoal);
+                const displayedTarget = plan.targetAtDate || goal.targetToday;
+                const savedAmount = planningGoal.currentAmount;
+                const progress = displayedTarget > 0 ? Math.max(0, Math.min(100, (savedAmount / displayedTarget) * 100)) : progressOf(goal);
+                const shortfall = plan.status === 'missing-data' ? Math.max(0, goal.targetToday - savedAmount) : plan.shortfallAtDate;
+                const months = plan.status === 'missing-data' ? monthsRemaining(goal.targetDate) : plan.monthsRemaining;
                 const reached = progress >= 100;
 
                 return (
@@ -135,6 +175,14 @@ export function GoalsRoute() {
                       <span className="font-medium">{goal.name}</span>
                       <span className="block text-xs text-(--color-muted-foreground)">
                         {KIND_LABELS[goal.kind]} · Priority {goal.priority} · {goal.riskBucket} risk
+                      </span>
+                      {allocatedValue > 0 ? <span className="block text-xs text-(--color-muted-foreground)">Includes {formatCurrency(allocatedValue, 0)} of linked assets</span> : null}
+                      <span className="block text-xs text-(--color-muted-foreground)">
+                        {plan.status === 'missing-data'
+                          ? 'Missing planning inputs'
+                          : plan.status === 'reached'
+                            ? 'Target covered'
+                            : `${plan.status === 'underfunded' ? 'Needs' : 'Planned'} ${formatCurrency(plan.requiredMonthlyContribution ?? 0, 0)}/mo`}
                       </span>
                     </TableCell>
 
@@ -159,8 +207,11 @@ export function GoalsRoute() {
                       </div>
                     </TableCell>
 
-                    <TableNumericCell>{formatCurrency(goal.targetToday)}</TableNumericCell>
-                    <TableNumericCell>{formatCurrency(goal.currentAmount)}</TableNumericCell>
+                    <TableNumericCell>
+                      <span>{formatCurrency(goal.targetToday)}</span>
+                      {displayedTarget !== goal.targetToday ? <span aria-hidden="true" className="block text-xs text-(--color-muted-foreground)">~{formatCurrency(displayedTarget)} at target</span> : null}
+                    </TableNumericCell>
+                    <TableNumericCell>{formatCurrency(savedAmount)}</TableNumericCell>
                     <TableNumericCell>
                       {reached ? (
                         <span className="text-(--color-accent)">Reached</span>
@@ -187,7 +238,8 @@ export function GoalsRoute() {
               })}
             </TableBody>
           </Table>
-        </Card>
+          </Card>
+        </>
       )}
 
       <Dialog

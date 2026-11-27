@@ -1,5 +1,6 @@
 import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, fiProgress } from '../../core/feature-ports';
+import { portfolioSafetyReport } from '../financial-safety/safety-engine';
 
 export interface HealthAssessment {
   status: 'green' | 'yellow' | 'red';
@@ -8,6 +9,7 @@ export interface HealthAssessment {
   dimensions: {
     fiProgress: 'green' | 'yellow' | 'red';
     protection: 'green' | 'yellow' | 'red';
+    liquidity: 'green' | 'yellow' | 'red';
     savingsRate: 'green' | 'yellow' | 'red';
     portfolioHealth: 'green' | 'yellow' | 'red';
   };
@@ -21,12 +23,15 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   // Dimensions
   let fiStatus: 'green' | 'yellow' | 'red' = 'green';
   let fiDetail = 'FI target is on track.';
-  if ((fi.fiTarget ?? 0) > 0 && fi.currentCorpus > 0) {
+  if ((fi.fiTarget ?? 0) > 0 && fi.currentCorpus <= 0) {
+    fiStatus = 'yellow';
+    fiDetail = 'FI progress has not started yet; add a savings plan or review your target.';
+  } else if ((fi.fiTarget ?? 0) > 0 && fi.currentCorpus > 0) {
     if (fi.progressPercent < 10) {
        fiStatus = 'yellow';
        fiDetail = 'FI progress is low, consider reviewing growth rate.';
     }
-  } else if (fi.fiTarget === 0) {
+  } else if (fi.fiTarget === null || fi.fiTarget === 0) {
     fiStatus = 'yellow';
     fiDetail = 'FI target is not configured.';
   }
@@ -48,7 +53,7 @@ export function assessHealth(state: FireOSState): HealthAssessment {
 
   let savingsStatus: 'green' | 'yellow' | 'red' = 'green';
   let savingsDetail = 'Savings rate is excellent (>30%).';
-  if (annualIncome > 0) {
+  if (annualIncome > 0 && state.profile.annualExpenses > 0) {
     const annualExpenses = (state.profile.annualExpenses || 0) * 12;
     const savingsRate = (annualIncome - annualExpenses) / annualIncome;
     if (savingsRate < 0.15) {
@@ -60,9 +65,25 @@ export function assessHealth(state: FireOSState): HealthAssessment {
     } else {
       savingsDetail = `Savings rate is healthy at ${Math.round(savingsRate * 100)}%.`;
     }
+  } else if (annualIncome > 0) {
+    savingsStatus = 'yellow';
+    savingsDetail = 'Add essential monthly expenses to calculate savings rate.';
   } else {
     savingsStatus = 'red';
     savingsDetail = 'No income data configured.';
+  }
+
+  const liquidity = portfolioSafetyReport(state).liquidity;
+  let liquidityStatus: 'green' | 'yellow' | 'red' = 'yellow';
+  let liquidityDetail = 'Liquidity is not fully assessable yet.';
+  if (liquidity.status === 'available' && liquidity.runwayMonths !== null) {
+    if (liquidity.runwayMonths < 6) liquidityStatus = 'red';
+    else if (liquidity.runwayMonths >= 12) liquidityStatus = 'green';
+    liquidityDetail = `${liquidity.runwayMonths.toFixed(1)} months of essential-expense runway from accessible assets.`;
+  } else if (liquidity.reason === 'expenses-missing') {
+    liquidityDetail = 'Add essential monthly expenses to calculate emergency runway.';
+  } else if (liquidity.reason === 'valuation-missing') {
+    liquidityDetail = 'Refresh or manually value assets before relying on runway.';
   }
 
   let portfolioStatus: 'green' | 'yellow' | 'red' = 'green';
@@ -82,7 +103,7 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   }
 
   // Aggregate Status
-  const statuses = [fiStatus, protectionStatus, savingsStatus, portfolioStatus];
+  const statuses = [fiStatus, protectionStatus, liquidityStatus, savingsStatus, portfolioStatus];
   let overall: 'green' | 'yellow' | 'red' = 'green';
   if (statuses.includes('red')) overall = 'red';
   else if (statuses.includes('yellow')) overall = 'yellow';
@@ -94,10 +115,11 @@ export function assessHealth(state: FireOSState): HealthAssessment {
   return {
     status: overall,
     headline,
-    details: [fiDetail, protectionDetail, savingsDetail, portfolioDetail],
+    details: [fiDetail, protectionDetail, liquidityDetail, savingsDetail, portfolioDetail],
     dimensions: {
       fiProgress: fiStatus,
       protection: protectionStatus,
+      liquidity: liquidityStatus,
       savingsRate: savingsStatus,
       portfolioHealth: portfolioStatus,
     }
@@ -117,6 +139,7 @@ export function renderHealthStatusBanner(state: FireOSState): string {
   const dimLabels = {
     fiProgress: 'FI Progress',
     protection: 'Protection',
+    liquidity: 'Liquidity',
     savingsRate: 'Savings Rate',
     portfolioHealth: 'Portfolio Health'
   };
@@ -135,13 +158,13 @@ export function renderHealthStatusBanner(state: FireOSState): string {
 
   return `
     <div class="health-banner health-banner--${assessment.status}">
-      <div class="health-banner-header cursor-pointer" id="health-banner-toggle" style="display:flex; justify-content:space-between; align-items:center;">
-        <div class="health-banner-title" style="display:flex; align-items:center; gap:0.5rem; font-family:'Fira Code', monospace;">
+      <button type="button" class="health-banner-header cursor-pointer" id="health-banner-toggle" aria-expanded="false" aria-controls="health-banner-details" style="display:flex; justify-content:space-between; align-items:center; width:100%; text-align:left;">
+        <span class="health-banner-title" style="display:flex; align-items:center; gap:0.5rem; font-family:'Fira Code', monospace;">
           ${iconMap[assessment.status]}
           <span>${assessment.headline}</span>
-        </div>
-        <div class="health-banner-chevron" style="transition: transform 0.3s ease;">▼</div>
-      </div>
+        </span>
+        <span class="health-banner-chevron" style="transition: transform 0.3s ease;">▼</span>
+      </button>
       <div class="health-banner-details" id="health-banner-details" style="display: none; margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
         ${detailsHtml}
       </div>
@@ -159,6 +182,7 @@ export function attachHealthBannerListeners(): void {
       const isHidden = details.style.display === 'none';
       details.style.display = isHidden ? 'block' : 'none';
       chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+      toggle.setAttribute('aria-expanded', String(isHidden));
     });
   }
 }

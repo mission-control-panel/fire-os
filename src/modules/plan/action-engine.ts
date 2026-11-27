@@ -1,6 +1,12 @@
 import type { FireOSState } from '../../types/state';
 import { checkWatchdogRules, floatIndicator } from '../../core/feature-ports';
 import { portfolioSafetyReport } from '../financial-safety/safety-engine';
+import { planGoal } from './goal-planning';
+import { formatCurrency } from '../../lib/formatters';
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
+}
 
 export interface ActionItem {
   id: string;              // Unique key for checkbox persistence
@@ -158,17 +164,31 @@ export function generateActionItems(state: FireOSState): ActionItem[] {
 
   // 9. Goal SIP start approaching (< 6 months) (upcoming)
   for (const goal of state.goals ?? []) {
-    if (!goal.targetDate || !goal.monthlyContribution) continue;
-    const [gYear, gMonth] = goal.targetDate.split('-').map(Number);
-    const goalStart = new Date(gYear, gMonth - 1, 1);
-    const monthsToStart = (goalStart.getTime() - now.getTime()) / (1000 * 3600 * 24 * 30);
-    if (monthsToStart > 0 && monthsToStart < 6) {
+    const plan = planGoal(goal, { today: now });
+    if (plan.status === 'overdue') {
+      addAction({
+        id: `goal-overdue-${goal.id}`,
+        priority: 'urgent',
+        category: 'review',
+        title: `Replan ${goal.name}`,
+        description: `This goal is overdue by ${Math.abs(plan.monthsRemaining)} month${Math.abs(plan.monthsRemaining) === 1 ? '' : 's'}. Update the target date or funding assumptions.`,
+      });
+    } else if (plan.status === 'underfunded' && plan.requiredMonthlyContribution !== null) {
+      addAction({
+        id: `goal-funding-gap-${goal.id}`,
+        priority: 'this-month',
+        category: 'invest',
+        title: `Close ${goal.name} funding gap`,
+        description: `Plan ${formatCurrency(plan.requiredMonthlyContribution, 0)}/mo; current contribution leaves a ${formatCurrency(plan.contributionGap ?? 0, 0)}/mo gap after inflation.`,
+      });
+    }
+    if (plan.monthsRemaining > 0 && plan.monthsRemaining < 6 && goal.monthlyContribution) {
       addAction({
         id: `goal-sip-approaching-${goal.id}`,
         priority: 'upcoming',
         category: 'invest',
         title: `Prepare for ${goal.name} SIP`,
-        description: `${goal.name} SIP (₹${goal.monthlyContribution}/mo) starts in ${Math.ceil(monthsToStart)} months (${goal.targetDate}). Ensure cashflow.`,
+        description: `${goal.name} SIP (₹${goal.monthlyContribution}/mo) starts in ${Math.ceil(plan.monthsRemaining)} months (${goal.targetDate}). Ensure cashflow.`,
       });
     }
   }
@@ -234,14 +254,14 @@ export function renderActionItems(state: FireOSState): string {
   }
   
   return items.map(item => `
-    <label class="action-item action-item--${item.priority} ${item.completed ? 'action-item--completed' : ''}">
-      <input type="checkbox" data-action-id="${item.id}" ${item.completed ? 'checked' : ''} class="cursor-pointer action-checkbox">
+    <label class="action-item action-item--${escapeHtml(item.priority)} ${item.completed ? 'action-item--completed' : ''}">
+      <input type="checkbox" data-action-id="${escapeHtml(item.id)}" ${item.completed ? 'checked' : ''} class="cursor-pointer action-checkbox">
       <div class="action-content">
         <div class="action-header">
-          <span class="action-category-badge">${item.category}</span>
-          <span class="action-title" style="font-weight: 500;">${item.title}</span>
+          <span class="action-category-badge">${escapeHtml(item.category)}</span>
+          <span class="action-title" style="font-weight: 500;">${escapeHtml(item.title)}</span>
         </div>
-        <span class="action-desc" style="display: block; font-size: 0.9rem; opacity: 0.8; margin-top: 0.25rem;">${item.description}</span>
+        <span class="action-desc" style="display: block; font-size: 0.9rem; opacity: 0.8; margin-top: 0.25rem;">${escapeHtml(item.description)}</span>
       </div>
     </label>
   `).join('');
