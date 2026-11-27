@@ -198,6 +198,11 @@ describe('portfolio Firestore rules', () => {
       value: { name: 'Example Fund', units: 1, startDate: '2026-01-15', monthlyAmount: 1000 },
       updatedAt: '2026-01-01T00:00:00.000Z',
     }));
+    await assertSucceeds(setDoc(doc(db, 'users/owner-ranges/portfolio/state/holdings/fund-leap'), {
+      kind: 'mf',
+      value: { name: 'Example Fund', units: 1, startDate: '2024-02-29', monthlyAmount: 1000 },
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }));
   });
 
   it('denies inline dynamic map values and malformed timestamp maps', async () => {

@@ -128,7 +128,7 @@ function validWatchdogRules(value) {
         && isBoundedString(value.name, 200)
         && (!('schemeCode' in value) || isBoundedString(value.schemeCode, 50))
         && value.units is number && value.units >= 0 && value.units <= 1000000000000
-        && isBoundedString(value.startDate, 20) && value.startDate.matches('^\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])|0[1-9]|1[0-2])$')
+        && isBoundedString(value.startDate, 20) && value.startDate.matches('^(?:\\d{4}-(?:0[1-9]|1[0-2])|\\d{4}-(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|\\d{4}-(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|\\d{4}-02-(?:0[1-9]|1\\d|2[0-8])|(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)$')
         && value.monthlyAmount is number && value.monthlyAmount >= 0 && value.monthlyAmount <= 1000000000000
         && (!('costBasis' in value) || (value.costBasis is number && value.costBasis >= 0 && value.costBasis <= 1000000000000000))
         && (!('bucketId' in value) || isBoundedString(value.bucketId, 20));
